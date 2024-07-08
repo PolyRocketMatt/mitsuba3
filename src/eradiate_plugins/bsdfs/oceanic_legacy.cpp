@@ -76,20 +76,46 @@ public:
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
                   const Vector3f &wo, Mask active) const override {
-        //MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, activate);
+        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
-        //bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
+        bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
+        if (unlikely(dr::none_or<false>(active) || !has_whitecap))
+            return 0.f;
 
-        //if (unlikely(!has_whitecap))
-        //    return 0.f;
+        Float cos_theta_i = Frame3f::cos_theta(si.wi),
+              cos_theta_o = Frame3f::cos_theta(wo);
 
-        // Compute the incoming and outgoing cosine terms
-        //Float cos_theta_i = Frame3f::cos_theta(si.wi),
-        //      cos_theta_o = Frame3f::cos_theta(wo);
+        // Compute the whitecap reflectance
+        UnpolarizedSpectrum result(0.f);
+
+        if (has_whitecap) {
+            UnpolarizedSpectrum wind_speed = m_wind_speed->eval(si, active);
+
+            // Koepke 1984 with linear interpolation to obtain the efficiency factor
+            // The maximum wind speed is chosen to be 38 m/s as to not exceed fractional coverage limits
+            result[active] = 4.0 + [4.0 * (wind_speed / 38.0) - 2.0];
+        }
+
+        // TODO: Multiply by the cosine term???
+
+        return dr::select(active, result, 0.f);
     }
 
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
               const Vector3f &wo, Mask active) const override {
+        MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
+
+        bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
+        if (unlikely(dr::none_or<false>(active) || !has_whitecap))
+            return 0.f;
+
+        // Ensure that incoming direction is in upper hemisphere
+        Vector3f wo_flip{ wo.x(), wo.y(), dr::abs(cos_theta_o) };
+
+        Float result = dr::select(
+            active, warp::square_to_cosine_hemisphere_pdf(wo_flip), 0.f);
+
+        return result;
     }
 
     void traverse(TraversalCallback *callback) override {
