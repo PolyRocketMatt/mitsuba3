@@ -14,7 +14,7 @@ public:
 
     Oceanic(const Properties &props) : Base(props) {
         // Retrieve the parameters used in 6SV
-        m_wind_speed = props.texture<Texture>("wind_speed");
+        //m_wind_speed = props.texture<Texture>("wind_speed");
 
         // Set the BSDF flags
         // => Whitecap reflectance is "diffuse"
@@ -31,6 +31,7 @@ public:
            Float sample1, const Point2f &sample2, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
+        /*
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         if (unlikely(dr::none_or<false>(active) || !has_whitecap))
             return { dr::zeros<BSDFSample3f>(), UnpolarizedSpectrum(0.f) };
@@ -52,14 +53,14 @@ public:
         Float whitecap_sampling_weight = 1.f;
 
         // Retrieve wind speeds
-        UnpolarizedSpectrum wind_speed = m_wind_speed->eval(si, active);
+        UnpolarizedSpectrum wind_speed = 38.0f * m_wind_speed->eval(si, active);
 
         // Evaluate by activating lanes
         value = dr::select(active, Float(1.f), 0.f);
 
         // Koepke 1984 with linear interpolation to obtain the efficiency factor
         // The maximum wind speed is chosen to be 38 m/s as to not exceed fractional coverage limits
-        value[active] = 4.0 + [4.0 * (wind_speed / 38.0) - 2.0];
+        value[active] = 4.0f + [4.0f * (wind_speed / 38.0f) - 2.0f];
 
         // Compute PDF (= cosine weighed for now)
         bs.pdf = dr::select(active, warp::square_to_cosine_hemisphere_pdf(wo), 0.f);
@@ -72,10 +73,24 @@ public:
 
         // Return the result
         return { bs, value };
+        */
+
+        // Test
+        UnpolarizedSpectrum value(0.f);
+        BSDFSample3f bs = dr::zeros<BSDFSample3f>();
+
+        bs.pdf = dr::select(active, warp::square_to_cosine_hemisphere_pdf(si.wi), 0.f);
+        bs.eta = 1.f;
+        bs.sampled_component = dr::select(active, UInt32(0), UInt32(0));
+        bs.sampled_type = dr::select(active, UInt32(+BSDFFlags::DiffuseReflection), 
+                                             UInt32(+BSDFFlags::DiffuseReflection));
+    
+        return { bs, value };
     }
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
                   const Vector3f &wo, Mask active) const override {
+        /*
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
@@ -93,16 +108,19 @@ public:
 
             // Koepke 1984 with linear interpolation to obtain the efficiency factor
             // The maximum wind speed is chosen to be 38 m/s as to not exceed fractional coverage limits
-            result[active] = 4.0 + [4.0 * (wind_speed / 38.0) - 2.0];
+            result[active] = 4.0f + [4.0f * (wind_speed / 38.0f) - 2.0f];
         }
 
         // TODO: Multiply by the cosine term???
 
         return dr::select(active, result, 0.f);
+        */
+       return dr::select(active, UnpolarizedSpectrum(1.f), 0.f);
     }
 
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
               const Vector3f &wo, Mask active) const override {
+        /*
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
@@ -116,6 +134,8 @@ public:
             active, warp::square_to_cosine_hemisphere_pdf(wo_flip), 0.f);
 
         return result;
+        */
+        return dr::select(active, warp::square_to_cosine_hemisphere_pdf(wo), 0.f);
     }
 
     void traverse(TraversalCallback *callback) override {
@@ -125,13 +145,15 @@ public:
         std::ostringstream oss;
         return oss.str();
     }
+
+    MI_DECLARE_CLASS()
 private:
     // Paremeters to compute fractional whitecap coverage based on 
     // "optimal power-law descrption of oceanic whitecap coverage 
     // dependence on wind speed" by Monahan et al.
-    ref<Texture> m_wind_speed;
-    float m_monahan_alpha = 2.951 * 10e-6;
-    float m_monahan_lambda = 3.52
+    //ref<Texture> m_wind_speed;
+    //float m_monahan_alpha = 2.951 * 10e-6;
+    //float m_monahan_lambda = 3.52;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(Oceanic, BSDF)
