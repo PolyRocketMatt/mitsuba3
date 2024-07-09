@@ -7,12 +7,12 @@
 NAMESPACE_BEGIN(mitsuba)
 
 template <typename Float, typename Spectrum>
-class Oceanic final : public BSDF<Float, Spectrum> {
+class OceanicBSDF final : public BSDF<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
     MI_IMPORT_TYPES(Texture)
 
-    Oceanic(const Properties &props) : Base(props) {
+    OceanicBSDF(const Properties &props) : Base(props) {
         // Retrieve the parameters used in 6SV
         //m_wind_speed = props.texture<Texture>("wind_speed");
 
@@ -156,6 +156,6 @@ private:
     //float m_monahan_lambda = 3.52;
 };
 
-MI_IMPLEMENT_CLASS_VARIANT(Oceanic, BSDF)
-MI_EXPORT_PLUGIN(Oceanic, "Oceanic material")
+MI_IMPLEMENT_CLASS_VARIANT(OceanicBSDF, BSDF)
+MI_EXPORT_PLUGIN(OceanicBSDF, "Oceanic material")
 NAMESPACE_END(mitsuba)
