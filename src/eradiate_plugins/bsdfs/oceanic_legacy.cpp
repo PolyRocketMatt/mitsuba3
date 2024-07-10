@@ -157,6 +157,8 @@ public:
         std::ostringstream oss;
         oss << "OceanicLegacy[" << std::endl
             << std::endl
+            << "  wavelength = " << string::indent(m_wavelength) << std::endl
+            << "  wind_speed = " << string::indent(m_wind_speed) << std::endl
             << "]";
         return oss.str();
     }
