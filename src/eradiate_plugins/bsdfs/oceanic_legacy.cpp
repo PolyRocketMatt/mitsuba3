@@ -15,6 +15,34 @@ template<typename Float, typename Spectrum>
 class CoxMunkDistribution {
 public:
     MI_IMPORT_TYPES()
+
+    Spectrum eval(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi_i, const Spectrum &phi_w, const Spectrum &wind_speed) const {
+        // Difference between the azimuth of th incoming light direction and 
+        // the azimuth of the wind speed.
+        Spectrum chi = phi_i - phi_w;
+
+        // Compute the Cox-Munk slope distribution, term by term
+        Spectrum s_c = dr::sqrt(s_c_sqr(wind_speed));
+        Spectrum s_u = dr::sqrt(s_u_sqr(wind_speed));
+
+        Spectrum ksi = z_x_prime(theta_i, theta_o, chi) / s_c;
+        Spectrum eta = z_y_prime(theta_i, theta_o, chi) / s_u;
+    
+        Spectrum ksi_sqr = ksi * ksi;
+        Spectrum eta_sqr = eta * eta;
+
+        Spectrum normalization_c = 1.f / (dr::TwoPi<Float> * s_c * s_u);
+        Spectrum exp_factor = dr::exp(-0.5 * (ksi_sqr + eta_sqr));
+
+        Spectrum a = (c_21(wind_speed) / 2.0f) * (ksi_sqr - 1.0f) * eta;
+        Spectrum b = (c_03(wind_speed) / 6.0f) * (eta_sqr * eta - 3.0f * eta);
+        Spectrum c = (m_c_40 / 24.0f) * (ksi_sqr * ksi_sqr - 6.0f * ksi_sqr + 3.0f);
+        Spectrum d = (m_c_22 / 4.0f) * (ksi_sqr - 1.0f) * (eta_sqr - 1.0f);
+        Spectrum e = (m_c_04 / 24.0f) * (eta_sqr * eta_sqr - 6.0f * eta_sqr + 3.0f);
+
+        // Combine
+        return normalization_c * exp_factor * (1.0f - a - b + c + d + e);
+    }
 private:
     ScalarFloat m_c_40 = 0.40f;
     ScalarFloat m_c_22 = 0.12f;
@@ -36,48 +64,20 @@ private:
         return 0.00316f * wind_speed;
     }
 
-    Float z_x(const Float &theta_i, const Float &theta_o, const Float &phi) {
+    Spectrum z_x(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
         return (-dr::sin(theta_o) * dr::sin(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
     }
 
-    Float z_y(const Float &theta_i, const Float &theta_o, const Float &phi) {
+    Spectrum z_y(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
         return (dr::sin(theta_i) + dr::sin(theta_o) * dr::cos(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
     }
 
-    Float z_x_prime(const Float &theta_i, const Float &theta_o, const Float &chi) {
+    Spectrum z_x_prime(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &chi) const {
         return z_x(theta_i, theta_o, chi) * dr::cos(chi) + z_y(theta_i, theta_o, chi) * dr::sin(chi);
     }
 
-    Float z_y_prime(const Float &theta_i, const Float &theta_o, const Float &chi) {
+    Spectrum z_y_prime(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &chi) const {
         return -z_x(theta_i, theta_o, chi) * dr::sin(chi) + z_y(theta_i, theta_o, chi) * dr::cos(chi);
-    }
-
-    Float eval(const Float &theta_i, const Float &theta_o, const Float &phi_i, const Float &phi_w, const Spectrum &wind_speed) {
-        // Difference between the azimuth of th incoming light direction and 
-        // the azimuth of the wind speed.
-        Float chi = phi_i - phi_w;
-
-        // Compute the Cox-Munk slope distribution, term by term
-        Float s_c = dr::sqrt(s_c_sqr(wind_speed));
-        Float s_u = dr::sqrt(s_u_sqr(wind_speed));
-
-        Float ksi = z_x_prime(theta_i, theta_o, chi) / s_c;
-        Float eta = z_y_prime(theta_i, theta_o, chi) / s_u;
-    
-        Float ksi_sqr = ksi * ksi;
-        Float eta_sqr = eta * eta;
-
-        Float normalization_c = 1.f / (dr::TwoPi<Float> * s_c * s_u);
-        Float exp_factor = dr::exp(-0.5 * (ksi_sqr + eta_sqr));
-
-        Float a = (c_21(wind_speed) / 2.0f) * (ksi_sqr - 1.0f) * eta;
-        Float b = (c_03(wind_speed) / 6.0f) * (eta_sqr * eta - 3.0f * eta);
-        Float c = (m_c_40 / 24.0f) * (ksi_sqr * ksi_sqr - 6.0f * ksi_sqr + 3.0f);
-        Float d = (m_c_22 / 4.0f) * (ksi_sqr - 1.0f) * (eta_sqr - 1.0f);
-        Float e = (m_c_04 / 24.0f) * (eta_sqr * eta_sqr - 6.0f * eta_sqr + 3.0f);
-
-        // Combine
-        return normalization_c * exp_factor * (1.0f - a - b + c + d + e);
     }
 };
 
@@ -93,6 +93,7 @@ public:
         // Retrieve the parameters used in 6SV
         m_wavelength = props.texture<Texture>("wavelength");
         m_wind_speed = props.texture<Texture>("wind_speed");
+        m_wind_direction = props.texture<Texture>("wind_direction");
         m_salinity = props.texture<Texture>("salinity");
 
         // Effective reflectance values for whitecaps, given originally
@@ -143,6 +144,8 @@ public:
                   const Vector3f &wo, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
+        Log(Warn, "Evaluating OceanicBSDF");
+
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
         if (unlikely(dr::none_or<false>(active) || !has_whitecap))
@@ -157,7 +160,8 @@ public:
         // Compute the whitecap reflectance
         UnpolarizedSpectrum result(0.f);
         
-        UnpolarizedSpectrum wind_speed = m_wind_speed->eval(si, active) * m_max_wind_speed;
+        // Compute the wind speed
+        Spectrum wind_speed = m_wind_speed->eval(si, active) * m_max_wind_speed;
 
         // Based on the power-law provided by Monahan & Muircheartaigh 1980,
         // the fractional whitecap coverage of whitecaps can be determined.
@@ -181,16 +185,27 @@ public:
             result[active] = whitecap_reflectance;
         } 
 
-        if (has_glint) {
-            // For sun glint, we need the solar and outgoing
-            // azimuth and zenith angles
-            Float theta_i = m_solar_zenith->eval(si, active).x();
-            Float theta_o = dr::acos(wo.z());
-            Float phi_i = m_solar_azimuth->eval(si, active).x();
-            Float phi_o = dr::atan2(wo.y(), wo.x());
+        Log(Warn, "Has Glint? %s", has_glint ? "Yes" : "No");
 
-            //Log(Warn, "Solar Azimuth: %f", phi_i);
-            //Log(Warn, "Solar Zenith: %f", theta_i);
+        if (has_glint) {
+            // To compute the solar glint, we need the incoming and outgoing
+            // zenithal angles, the incoming azimuthal angle and the wind direction
+            // which is given by the wind direction texture.
+            Spectrum wind_direction = m_wind_direction->eval(si, active);
+            Float sin_theta_i = Frame3f::sin_theta(si.wi),
+                  sin_theta_o = Frame3f::sin_theta(wo),
+                  cos_phi_i = Frame3f::cos_phi(si.wi);
+
+            // Transform sines and cosine into angles
+            Float theta_i = dr::asin(sin_theta_i),
+                  theta_o = dr::asin(cos_theta_o),
+                  phi_i = dr::acos(cos_phi_i);
+
+            // Using the provided data, we can compute the probability of having
+            // a solar specular reflection using the Cox-Munk distribution.
+            Spectrum specular_prob = m_cox_munk.eval(theta_i, theta_o, phi_i, wind_direction, wind_speed);
+        
+            Log(Warn, "Specular probability: %s", specular_prob);
         }
 
         return depolarizer<Spectrum>(result) & active;
@@ -211,6 +226,7 @@ public:
         oss << "OceanicLegacy[" << std::endl
             << "  wavelength = " << string::indent(m_wavelength) << std::endl
             << "  wind_speed = " << string::indent(m_wind_speed) << std::endl
+            << "  m_wind_direction = " << string::indent(m_wind_direction) << std::endl
             << "  salinity = " << string::indent(m_salinity) << std::endl
             << "]";
         return oss.str();
@@ -218,16 +234,20 @@ public:
 
     MI_DECLARE_CLASS()
 private:
-    // User-provided parameters
+    // User-provided fields
     ref<Texture> m_wavelength;
     ref<Texture> m_wind_speed;
+    ref<Texture> m_wind_direction;
     ref<Texture> m_salinity;
 
-    // Parameters used to compute whitecap reflectance
+    // Fields used to compute whitecap reflectance
     ScalarFloat m_f_eff_base = 0.4f;
     ScalarFloat m_monahan_alpha = 2.951f * 1e-6;
     ScalarFloat m_monahan_lambda = 3.52f;
     ScalarFloat m_max_wind_speed = 37.241869f;
+
+    // Fields used to compute the sun glint reflectance
+    CoxMunkDistribution<Float, Spectrum> m_cox_munk;
 
     // These values range from 0.2 to 4.0 μm
     IrregularContinuousDistribution<Float> m_eff_reflectance;
