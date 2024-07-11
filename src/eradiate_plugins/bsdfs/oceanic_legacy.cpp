@@ -37,6 +37,8 @@ public:
                                BSDFFlags::FrontSide | BSDFFlags::BackSide);
     
         // => Sun glint reflectance at the water surface
+        m_components.push_back(BSDFFlags::GlossyReflection | 
+                               BSDFFlags::FrontSide | BSDFFlags::BackSide);
 
         m_flags = m_components[0];
         dr::set_attr(this, "flags", m_flags);
@@ -134,13 +136,6 @@ private:
 
     // These values range from 0.2 to 4.0 μm
     IrregularContinuousDistribution<Float> m_eff_reflectance;
-
-    //ScalarFloat m_eff_reflectance[39] = {
-    //    0.220, 0.220, 0.220, 0.220, 0.220, 0.220, 0.215, 0.210, 0.200, 0.190,
-    //    0.175, 0.155, 0.130, 0.080, 0.100, 0.105, 0.100, 0.080, 0.045, 0.055,
-    //    0.065, 0.060, 0.055, 0.040, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-    //    0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
-    //};
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(OceanicBSDF, BSDF)
