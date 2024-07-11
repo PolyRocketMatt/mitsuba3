@@ -57,7 +57,7 @@ private:
         // the azimuth of the wind speed.
         Float chi = phi_i - phi_w;
 
-        // Compute the Cox-Munk distribution, term by term
+        // Compute the Cox-Munk slope distribution, term by term
         Float s_c = dr::sqrt(s_c_sqr(wind_speed));
         Float s_u = dr::sqrt(s_u_sqr(wind_speed));
 
@@ -76,8 +76,8 @@ private:
         Float d = (m_c_22 / 4.0f) * (ksi_sqr - 1.0f) * (eta_sqr - 1.0f);
         Float e = (m_c_04 / 24.0f) * (eta_sqr * eta_sqr - 6.0f * eta_sqr + 3.0f);
 
-        // Combine all
-        normalization_c * exp_factor * (1.0f - a - b + c + d + e);
+        // Combine
+        return normalization_c * exp_factor * (1.0f - a - b + c + d + e);
     }
 };
 
