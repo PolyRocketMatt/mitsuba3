@@ -7,6 +7,82 @@
 
 NAMESPACE_BEGIN(mitsuba)
 
+// Header content - Potentially move somewhere else later
+#ifndef COX_MUNK_H
+#define COX_MUNK_H
+
+template<typename Float, typename Spectrum>
+class CoxMunkDistribution {
+public:
+    MI_IMPORT_TYPES()
+private:
+    ScalarFloat m_c_40 = 0.40f;
+    ScalarFloat m_c_22 = 0.12f;
+    ScalarFloat m_c_04 = 0.23f;
+
+    Spectrum c_21(const Spectrum &wind_speed) const {
+        return 0.01f - 0.0086f * wind_speed;
+    }
+
+    Spectrum c_03(const Spectrum &wind_speed) const {
+        return 0.04f - 0.033f * wind_speed;
+    }
+
+    Spectrum s_c_sqr(const Spectrum &wind_speed) const {
+        return 0.003f + 1.92f * 1e-3 * wind_speed;
+    }
+
+    Spectrum s_u_sqr(const Spectrum &wind_speed) const {
+        return 0.000f + 3.16f * 1e-3 * wind_speed;
+    }
+
+    Float z_x(const Float &theta_i, const Float &theta_o, const Float &phi) {
+        return (-dr::sin(theta_o) * dr::sin(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
+    }
+
+    Float z_y(const Float &theta_i, const Float &theta_o, const Float &phi) {
+        return (dr::sin(theta_i) + dr::sin(theta_o) * dr::cos(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
+    }
+
+    Float z_x_prime(const Float &theta_i, const Float &theta_o, const Float &chi) {
+        return z_x(theta_i, theta_o, chi) * dr::cos(chi) + z_y(theta_i, theta_o, chi) * dr::sin(chi);
+    }
+
+    Float z_y_prime(const Float &theta_i, const Float &theta_o, const Float &chi) {
+        return -z_x(theta_i, theta_o, chi) * dr::sin(chi) + z_y(theta_i, theta_o, chi) * dr::cos(chi);
+    }
+
+    Float eval(const Float &theta_i, const Float &theta_o, const Float &phi_i, const Float &phi_w, const Spectrum &wind_speed) {
+        // Difference between the azimuth of th incoming light direction and 
+        // the azimuth of the wind speed.
+        Float chi = phi_i - phi_w;
+
+        // Compute the Cox-Munk distribution, term by term
+        Float s_c = dr::sqrt(s_c_sqr(wind_speed));
+        Float s_u = dr::sqrt(s_u_sqr(wind_speed));
+
+        Float ksi = z_x_prime(theta_i, theta_o, chi) / s_c;
+        Float eta = z_y_prime(theta_i, theta_o, chi) / s_u;
+    
+        Float ksi_sqr = ksi * ksi;
+        Float eta_sqr = eta * eta;
+
+        Float normalization_c = 1.f / (dr::TwoPi<Float> * s_c * s_u);
+        Float exp_factor = dr::exp(-0.5 * (ksi_sqr + eta_sqr));
+
+        Float a = (c_21(wind_speed) / 2.0f) * (ksi_sqr - 1.0f) * eta;
+        Float b = (c_03(wind_speed) / 6.0f) * (eta_sqr * eta - 3.0f * eta);
+        Float c = (m_c_40 / 24.0f) * (ksi_sqr * ksi_sqr - 6.0f * ksi_sqr + 3.0f);
+        Float d = (m_c_22 / 4.0f) * (ksi_sqr - 1.0f) * (eta_sqr - 1.0f);
+        Float e = (m_c_04 / 24.0f) * (eta_sqr * eta_sqr - 6.0f * eta_sqr + 3.0f);
+
+        // Combine all
+        normalization_c * exp_factor * (1.0f - a - b + c + d + e);
+    }
+};
+
+#endif // COX_MUNK_H
+
 template <typename Float, typename Spectrum>
 class OceanicBSDF final : public BSDF<Float, Spectrum> {
 public:
@@ -17,8 +93,10 @@ public:
         // Retrieve the parameters used in 6SV
         m_wavelength = props.texture<Texture>("wavelength");
         m_wind_speed = props.texture<Texture>("wind_speed");
+        m_efficiency_correction = props.get<bool>("efficiency_correction", false);
 
-        // Set the internal parameters on initialization
+        // Effective reflectance values for whitecaps, given originally
+        // by Whitlock et al. 1982
         std::vector<ScalarFloat> wc_wavelengths = { 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f,
                                                     1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f,
                                                     2.2f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f, 2.9f, 3.0f, 3.1f,
@@ -83,7 +161,9 @@ public:
 
             // Koepke 1984 with linear interpolation to obtain the efficiency factor
             // The maximum wind speed is chosen to be 38 m/s as to not exceed fractional coverage limits
-            Spectrum efficiency = 0.4; //m_f_eff_base + (m_f_eff_base * wind_speed - m_f_eff_mod);
+            Spectrum efficiency = m_efficiency_correction ? (m_f_eff_base + (m_f_eff_base * wind_speed - m_f_eff_mod)) : 0.4f;
+
+            Log(Warn, "Efficiency Correction? %s", m_efficiency_correction ? "Yes" : "No");
 
             // Here we compute the effective reflectance by looking up the tabulated
             // values provided by Whitlock et al. 1982
@@ -125,13 +205,13 @@ private:
     // User-provided parameters
     ref<Texture> m_wavelength;
     ref<Texture> m_wind_speed;
-    //Bool m_efficiency_correction;
+    bool m_efficiency_correction;
 
     // Parameters used to compute whitecap reflectance
     ScalarFloat m_f_eff_base = 0.4f;
     ScalarFloat m_f_eff_mod = 0.2f;
-    ScalarFloat m_monahan_alpha = 2.951 * 1e-6;
-    ScalarFloat m_monahan_lambda = 3.52;
+    ScalarFloat m_monahan_alpha = 2.951f * 1e-6;
+    ScalarFloat m_monahan_lambda = 3.52f;
     ScalarFloat m_max_wind_speed = 37.241869f;
 
     // These values range from 0.2 to 4.0 μm
