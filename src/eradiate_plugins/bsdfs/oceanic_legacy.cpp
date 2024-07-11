@@ -17,8 +17,6 @@ public:
         // Retrieve the parameters used in 6SV
         m_wavelength = props.texture<Texture>("wavelength");
         m_wind_speed = props.texture<Texture>("wind_speed");
-        //m_efficiency_correction = props.get<Bool>("efficiency_correction");      
-        //Log(Warn, "Properties: %s", props.property_names());
 
         // Set the internal parameters on initialization
         std::vector<ScalarFloat> wc_wavelengths = { 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f,
