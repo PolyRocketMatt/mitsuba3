@@ -29,11 +29,11 @@ private:
     }
 
     Spectrum s_c_sqr(const Spectrum &wind_speed) const {
-        return 0.003f + 1.92f * 1e-3 * wind_speed;
+        return 0.003f + 0.00192f * wind_speed;
     }
 
     Spectrum s_u_sqr(const Spectrum &wind_speed) const {
-        return 0.000f + 3.16f * 1e-3 * wind_speed;
+        return 0.00316f * wind_speed;
     }
 
     Float z_x(const Float &theta_i, const Float &theta_o, const Float &phi) {
@@ -93,7 +93,7 @@ public:
         // Retrieve the parameters used in 6SV
         m_wavelength = props.texture<Texture>("wavelength");
         m_wind_speed = props.texture<Texture>("wind_speed");
-        m_efficiency_correction = props.get<bool>("efficiency_correction", false);
+        m_salinity = props.texture<Texture>("salinity");
 
         // Effective reflectance values for whitecaps, given originally
         // by Whitlock et al. 1982
@@ -144,6 +144,7 @@ public:
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
+        bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
         if (unlikely(dr::none_or<false>(active) || !has_whitecap))
             return 0.f;
 
@@ -155,27 +156,41 @@ public:
 
         // Compute the whitecap reflectance
         UnpolarizedSpectrum result(0.f);
+        
+        UnpolarizedSpectrum wind_speed = m_wind_speed->eval(si, active) * m_max_wind_speed;
+
+        // Based on the power-law provided by Monahan & Muircheartaigh 1980,
+        // the fractional whitecap coverage of whitecaps can be determined.
+        // Only if whitecaps are present, we compute the coverage.
+        Spectrum coverage = has_whitecap ? m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda) : 0.0f;
 
         if (has_whitecap) {
-            UnpolarizedSpectrum wind_speed = m_wind_speed->eval(si, active) * m_max_wind_speed;
-
             // Koepke 1984 with linear interpolation to obtain the efficiency factor
             // The maximum wind speed is chosen to be 38 m/s as to not exceed fractional coverage limits
-            Spectrum efficiency = m_efficiency_correction ? (m_f_eff_base + (m_f_eff_base * wind_speed - m_f_eff_mod)) : 0.4f;
-
-            Log(Warn, "Efficiency Correction? %s", m_efficiency_correction ? "Yes" : "No");
+            Spectrum efficiency = m_f_eff_base;
 
             // Here we compute the effective reflectance by looking up the tabulated
             // values provided by Whitlock et al. 1982
             Float eff_reflectance = m_eff_reflectance.eval_pdf(m_wavelength->eval(si, active).x(), active);      
 
-            // Based on the power-law provided by Monahan & Muircheartaigh 1980,
-            // the fractional whitecap coverage can be determined
-            Spectrum coverage = m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda);
+            // Compute the whitecap reflectance
+            Spectrum whitecap_reflectance = coverage * efficiency * eff_reflectance;
+        
+            // TODO: Multiply by the cosine?
+            // Add the whitecap reflectance to the result
+            result[active] = whitecap_reflectance;
+        } 
 
-            Spectrum ref_whitecap = coverage * efficiency * eff_reflectance;
+        if (has_glint) {
+            // For sun glint, we need the solar and outgoing
+            // azimuth and zenith angles
+            Float theta_i = m_solar_zenith->eval(si, active).x();
+            Float theta_o = dr::acos(wo.z());
+            Float phi_i = m_solar_azimuth->eval(si, active).x();
+            Float phi_o = dr::atan2(wo.y(), wo.x());
 
-            result[active] = ref_whitecap;// * cos_theta_o;
+            //Log(Warn, "Solar Azimuth: %f", phi_i);
+            //Log(Warn, "Solar Zenith: %f", theta_i);
         }
 
         return depolarizer<Spectrum>(result) & active;
@@ -196,6 +211,7 @@ public:
         oss << "OceanicLegacy[" << std::endl
             << "  wavelength = " << string::indent(m_wavelength) << std::endl
             << "  wind_speed = " << string::indent(m_wind_speed) << std::endl
+            << "  salinity = " << string::indent(m_salinity) << std::endl
             << "]";
         return oss.str();
     }
@@ -205,11 +221,10 @@ private:
     // User-provided parameters
     ref<Texture> m_wavelength;
     ref<Texture> m_wind_speed;
-    bool m_efficiency_correction;
+    ref<Texture> m_salinity;
 
     // Parameters used to compute whitecap reflectance
     ScalarFloat m_f_eff_base = 0.4f;
-    ScalarFloat m_f_eff_mod = 0.2f;
     ScalarFloat m_monahan_alpha = 2.951f * 1e-6;
     ScalarFloat m_monahan_lambda = 3.52f;
     ScalarFloat m_max_wind_speed = 37.241869f;
