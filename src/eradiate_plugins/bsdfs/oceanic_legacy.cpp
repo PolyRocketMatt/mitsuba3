@@ -88,11 +88,18 @@ public:
 
     Spectrum eval(const Spectrum &theta_i, const Spectrum &theta_o, 
                   const Spectrum &phi_i, const Spectrum &phi_o, 
-                  const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr,
-                  const Spectrum &salinity) {
+                  const Spectrum &n_real, const Spectrum &n_cplx,
+                  const Spectrum &chlorinity) {
         Spectrum phi_rel = phi_i - phi_o;
         Spectrum chi = chi(theta_i, theta_o, phi_rel);
         Spectrum cos_chi = dr::cos(chi);
+
+        //  Compute the real and complex parts of the index of refraction 
+        //  with Friedman and Sverdrup correction
+        Spectrum salinity = friedman_sverdrup_salinity(chlorinity);
+        Spectrum n_real_corrected = n_real_corrected + m_salinity_factor * salinity;
+        Spectrum n_real_sqr = dr::sqr(n_real_corrected);
+        Spectrum n_cplx_sqr = dr::sqr(n_cplx);
 
         //  Compute a values
         Spectrum a1 = a_1(n_real_sqr, n_cplx_sqr, chi);
@@ -117,6 +124,12 @@ public:
         return 0.5f * (left + right);
     }
 private:
+    ScalarFloat m_salinity_factor = 0.00017492711f;
+
+    //  Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
+    Spectrum friedman_sverdrup_salinity(const Spectrum &chlorinity) {
+        return 0.03f * 1.805f * chlorinity;
+    }
 
     Spectrum chi(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
         auto cos_two_chi = dr::cos(theta_o) * dr::cos(theta_i) + dr::sin(theta_o) * dr::sin(theta_i) * dr::cos(phi);
