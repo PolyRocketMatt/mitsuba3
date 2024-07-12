@@ -185,8 +185,6 @@ public:
             result[active] = whitecap_reflectance;
         } 
 
-        Log(Warn, "Has Glint? %s", has_glint ? "Yes" : "No");
-
         if (has_glint) {
             // To compute the solar glint, we need the incoming and outgoing
             // zenithal angles, the incoming azimuthal angle and the wind direction
