@@ -8,8 +8,8 @@
 NAMESPACE_BEGIN(mitsuba)
 
 // Header content - Potentially move somewhere else later
-#ifndef COX_MUNK_H
-#define COX_MUNK_H
+#ifndef OCEAN_DIST
+#define OCEAN_DIST
 
 template<typename Float, typename Spectrum>
 class CoxMunkDistribution {
@@ -81,7 +81,77 @@ private:
     }
 };
 
-#endif // COX_MUNK_H
+template<typename Float, typename Spectrum>
+class OceanFresnel {
+public:
+    MI_IMPORT_TYPES()
+
+    Spectrum eval(const Spectrum &theta_i, const Spectrum &theta_o, 
+                  const Spectrum &phi_i, const Spectrum &phi_o, 
+                  const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr,
+                  const Spectrum &salinity) {
+        Spectrum phi_rel = phi_i - phi_o;
+        Spectrum chi = chi(theta_i, theta_o, phi_rel);
+        Spectrum cos_chi = dr::cos(chi);
+
+        //  Compute a values
+        Spectrum a1 = a_1(n_real_sqr, n_cplx_sqr, chi);
+        Spectrum a2 = a_2(n_real_sqr, n_cplx_sqr, chi);
+
+        //  Compute b values
+        Spectrum b1 = b_1(n_real_sqr, n_cplx_sqr, chi);
+        Spectrum b2 = b_2(n_real_sqr, n_cplx_sqr, chi);
+
+        //  Compute u² and v²
+        Spectrum u_sqr = u_sqr(a1, a2);
+        Spectrum v_sqr = v_sqr(a1, a2);
+
+        //  Compute u and v
+        Spectrum u = dr::sqrt(u_sqr);
+        Spectrum v = dr::sqrt(v_sqr);
+
+        //  Compute the Fresnel reflection coefficient
+        Spectrum left = (dr::sqr(b1 - u) + dr::sqr(b2 + v)) / (dr::sqr(b1 + u) + dr::sqr(b2 - v));
+        Spectrum right = (dr::sqr(cos_chi - u) + v_sqr) / (dr::sqr(cos_chi + u) + v_sqr);
+
+        return 0.5f * (left + right);
+    }
+private:
+
+    Spectrum chi(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
+        auto cos_two_chi = dr::cos(theta_o) * dr::cos(theta_i) + dr::sin(theta_o) * dr::sin(theta_i) * dr::cos(phi);
+        return dr::acos(cos_two_chi) / 2.0f;
+    }
+
+    Spectrum u_sqr(const Spectrum &a_1, const Spectrum &a_2) {
+        return dr::abs(a_1 + a_2) / 2.0f;
+    }
+
+    Spectrum v_sqr(const Spectrum &a_1, const Spectrum &a_2) {
+        return dr::abs(-a_1 + a_2) / 2.0f;
+    }
+
+    Spectrum a_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
+        return dr::abs(n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
+    }
+
+    Spectrum a_2(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
+        auto t_1 = (n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
+        auto t_2 = 4.0f * n_real_sqr * n_cplx_sqr;
+        return dr::sqrt(dr::sqr(t_1) + t_2);
+    }
+
+    Spectrum b_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
+        return (n_real_sqr - n_cplx_sqr) * dr::cos(chi);
+    }
+
+    Spectrum b_2(const Spectrum &n_real, const Spectrum &n_cplx, const Spectrum &chi) {
+        return 2.0f * (n_real + n_cplx) * dr::cos(chi);
+    }
+
+};
+
+#endif // OCEAN_DIST
 
 template <typename Float, typename Spectrum>
 class OceanicBSDF final : public BSDF<Float, Spectrum> {
@@ -96,16 +166,48 @@ public:
         m_wind_direction = props.texture<Texture>("wind_direction");
         m_salinity = props.texture<Texture>("salinity");
 
+        //  Wavelengths considered by 6SV
+        std::vector<ScalarFloat> wc_wavelengths = { 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1,
+                                                    1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1,
+                                                    2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1,
+                                                    3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0 };
+
         // Effective reflectance values for whitecaps, given originally
         // by Whitlock et al. 1982
-        std::vector<ScalarFloat> wc_wavelengths = { 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f, 1.1f,
-                                                    1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 1.7f, 1.8f, 1.9f, 2.0f, 2.1f,
-                                                    2.2f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f, 2.8f, 2.9f, 3.0f, 3.1f,
-                                                    3.2f, 3.3f, 3.4f, 3.5f, 3.6f, 3.7f, 3.8f, 3.9f, 4.0f };
         std::vector<ScalarFloat> wc_data =    { 0.220, 0.220, 0.220, 0.220, 0.220, 0.220, 0.215, 0.210, 0.200, 0.190,
                                                 0.175, 0.155, 0.130, 0.080, 0.100, 0.105, 0.100, 0.080, 0.045, 0.055,
                                                 0.065, 0.060, 0.055, 0.040, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
                                                 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 };
+
+        // Real part of the complex index of refraction of water (Hale & Querry 1973)
+        std::vector<ScalarFloat> ior_wavelengths = {    0.200, 0.225, 0.250, 0.275, 0.300, 0.325, 0.345 ,0.375, 0.400, 0.425 ,
+                                                        0.445, 0.475, 0.500, 0.525, 0.550, 0.575, 0.600, 0.625, 0.650, 0.675,
+                                                        0.700, 0.725, 0.750, 0.775, 0.800, 0.825, 0.850, 0.875, 0.900, 0.925,
+                                                        0.950, 0.975, 1.000, 1.200, 1.400, 1.600, 1.800, 2.000, 2.200, 2.400, 
+                                                        2.600, 2.650, 2.700, 2.750, 2.800, 2.850, 2.900, 2.950, 3.000, 3.050,
+                                                        3.100, 3.150, 3.200, 3.250, 3.300, 3.350, 3.400, 3.450, 3.500, 3.600,
+                                                        3.700, 3.800, 3.900, 4.000 };
+        std::vector<ScalarFloat> ior_real_data = {  1.369, 1.373, 1.362, 1.354, 1.349, 1.346, 1.343, 1.341, 1.339, 1.338,
+                                                    1.337, 1.336, 1.335, 1.334, 1.333, 1.333, 1.332, 1.332, 1.331, 1.331,
+                                                    1.331, 1.330, 1.330, 1.330, 1.329, 1.329, 1.329, 1.328, 1.328, 1.328, 
+                                                    1.327, 1.327, 1.327, 1.324, 1.321, 1.317, 1.312, 1.306, 1.296, 1.279,
+                                                    1.242, 1.219, 1.188, 1.157, 1.142, 1.149, 1.201, 1.292, 1.371, 1.426,
+                                                    1.467, 1.483, 1.478, 1.467, 1.450, 1.432, 1.420, 1.410, 1.400, 1.385,
+                                                    1.374, 1.364, 1.357, 1.351 };
+        std::vector<ScalarFloat> ior_cplx_data = {  3.35e-08, 2.35e-08, 1.60e-08, 1.08e-08, 6.50e-09, 
+                                                    3.50e-09, 1.86e-09, 1.30e-09, 1.02e-09, 9.35e-10,
+                                                    1.00e-09, 1.32e-09, 1.96e-09, 3.60e-09, 1.09e-08,
+                                                    1.39e-08, 1.64e-08, 2.23e-08, 3.35e-08, 9.15e-08,
+                                                    1.56e-07, 1.48e-07, 1.25e-07, 1.82e-07, 2.93e-07,
+                                                    3.91e-07, 4.86e-07, 1.06e-06, 2.93e-06, 3.48e-06,
+                                                    2.89e-06, 9.89e-06, 1.38e-04, 8.55e-05, 1.15e-04,
+                                                    1.10e-03, 2.89e-04, 9.56e-04, 3.17e-03, 6.70e-03,
+                                                    1.90e-02, 5.90e-02, 1.15e-01, 1.85e-01, 2.68e-01,
+                                                    2.98e-01, 2.72e-01, 2.40e-01, 1.92e-01, 1.35e-01,
+                                                    9.24e-02, 6.10e-02, 3.68e-02, 2.61e-02, 1.95e-02,
+                                                    1.32e-02, 9.40e-03, 5.15e-03, 3.60e-03, 3.40e-03,
+                                                    3.80e-03, 4.60e-03 };
+
         m_eff_reflectance = IrregularContinuousDistribution<Float>(
             wc_wavelengths.data(), wc_data.data(), wc_data.size()
         );
@@ -247,8 +349,12 @@ private:
     // Fields used to compute the sun glint reflectance
     CoxMunkDistribution<Float, Spectrum> m_cox_munk;
 
-    // These values range from 0.2 to 4.0 μm
+    // Distributions used for
+    //  1. Effective reflectance of whitecaps (Whitlock et al 1982, Koepke 1984)
     IrregularContinuousDistribution<Float> m_eff_reflectance;
+    //  2. Complex IOR of water (Hale & Querry 1973)
+    IrregularContinuousDistribution<Float> m_ior_real;
+    IrregularContinuousDistribution<Float> m_ior_imag;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(OceanicBSDF, BSDF)
