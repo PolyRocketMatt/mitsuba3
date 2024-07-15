@@ -97,7 +97,7 @@ public:
         //  Compute the real and complex parts of the index of refraction 
         //  with Friedman and Sverdrup correction
         Spectrum salinity = friedman_sverdrup_salinity(chlorinity);
-        Spectrum n_real_corrected = n_real_corrected + m_salinity_factor * salinity;
+        Spectrum n_real_corrected = n_real + m_salinity_factor * salinity;
         Spectrum n_real_sqr = dr::sqr(n_real_corrected);
         Spectrum n_cplx_sqr = dr::sqr(n_cplx);
 
@@ -107,7 +107,7 @@ public:
 
         //  Compute b values
         Spectrum b1 = b_1(n_real_sqr, n_cplx_sqr, chi);
-        Spectrum b2 = b_2(n_real_sqr, n_cplx_sqr, chi);
+        Spectrum b2 = b_2(n_real_corrected, n_cplx, chi);
 
         //  Compute u² and v²
         Spectrum u_sqr = u_sqr(a1, a2);
@@ -128,7 +128,7 @@ private:
 
     //  Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
     Spectrum friedman_sverdrup_salinity(const Spectrum &chlorinity) {
-        return 0.03f * 1.805f * chlorinity;
+        return 0.03f + 1.805f * chlorinity;
     }
 
     Spectrum chi(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
@@ -207,19 +207,19 @@ public:
                                                     1.242, 1.219, 1.188, 1.157, 1.142, 1.149, 1.201, 1.292, 1.371, 1.426,
                                                     1.467, 1.483, 1.478, 1.467, 1.450, 1.432, 1.420, 1.410, 1.400, 1.385,
                                                     1.374, 1.364, 1.357, 1.351 };
-        std::vector<ScalarFloat> ior_cplx_data = {  3.35e-08, 2.35e-08, 1.60e-08, 1.08e-08, 6.50e-09, 
-                                                    3.50e-09, 1.86e-09, 1.30e-09, 1.02e-09, 9.35e-10,
-                                                    1.00e-09, 1.32e-09, 1.96e-09, 3.60e-09, 1.09e-08,
-                                                    1.39e-08, 1.64e-08, 2.23e-08, 3.35e-08, 9.15e-08,
-                                                    1.56e-07, 1.48e-07, 1.25e-07, 1.82e-07, 2.93e-07,
-                                                    3.91e-07, 4.86e-07, 1.06e-06, 2.93e-06, 3.48e-06,
-                                                    2.89e-06, 9.89e-06, 1.38e-04, 8.55e-05, 1.15e-04,
-                                                    1.10e-03, 2.89e-04, 9.56e-04, 3.17e-03, 6.70e-03,
-                                                    1.90e-02, 5.90e-02, 1.15e-01, 1.85e-01, 2.68e-01,
-                                                    2.98e-01, 2.72e-01, 2.40e-01, 1.92e-01, 1.35e-01,
-                                                    9.24e-02, 6.10e-02, 3.68e-02, 2.61e-02, 1.95e-02,
-                                                    1.32e-02, 9.40e-03, 5.15e-03, 3.60e-03, 3.40e-03,
-                                                    3.80e-03, 4.60e-03 };
+        std::vector<ScalarFloat> ior_cplx_data = {  1.10e-07, 4.90e-08, 3.35e-08, 2.35e-08, 1.60e-08, 
+                                                    1.08e-08, 6.50e-09, 3.50e-09, 1.86e-09, 1.30e-09, 
+                                                    1.02e-09, 9.35e-10, 1.00e-09, 1.32e-09, 1.96e-09, 
+                                                    3.60e-09, 1.09e-08, 1.39e-08, 1.64e-08, 2.23e-08, 
+                                                    3.35e-08, 9.15e-08, 1.56e-07, 1.48e-07, 1.25e-07, 
+                                                    1.82e-07, 2.93e-07, 3.91e-07, 4.86e-07, 1.06e-06, 
+                                                    2.93e-06, 3.48e-06, 2.89e-06, 9.89e-06, 1.38e-04, 
+                                                    8.55e-05, 1.15e-04, 1.10e-03, 2.89e-04, 9.56e-04, 
+                                                    3.17e-03, 6.70e-03, 1.90e-02, 5.90e-02, 1.15e-01, 
+                                                    1.85e-01, 2.68e-01, 2.98e-01, 2.72e-01, 2.40e-01, 
+                                                    1.92e-01, 1.35e-01, 9.24e-02, 6.10e-02, 3.68e-02, 
+                                                    2.61e-02, 1.95e-02, 1.32e-02, 9.40e-03, 5.15e-03, 
+                                                    3.60e-03, 3.40e-03, 3.80e-03, 4.60e-03 };
 
         m_eff_reflectance = IrregularContinuousDistribution<Float>(
             wc_wavelengths.data(), wc_data.data(), wc_data.size()
