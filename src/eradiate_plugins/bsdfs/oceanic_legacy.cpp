@@ -104,40 +104,17 @@ public:
         return normalization_c * exp_factor * (1.0f - a - b + c + d + e);
     }
 
-    Spectrum eval_fresnel(const Spectrum &theta_i, const Spectrum &theta_o, 
-                  const Spectrum &phi_i, const Spectrum &phi_o, 
-                  const Spectrum &n_real, const Spectrum &n_cplx,
-                  const Spectrum &chlorinity) {
-        Spectrum phi_rel = phi_i - phi_o;
-        Spectrum chi = fresnel_chi(theta_i, theta_o, phi_rel);
-        Spectrum cos_chi = dr::cos(chi);
+    Spectrum eval_fresnel(const Spectrum &theta_i, const Spectrum &n_real, const Spectrum &chlorinity) {
+        Float ior_correction = m_salinity_factor * (chlorinity);
+        Spectrum n_real_corr = n_real + ior_correction;
+        Spectrum ior_prop = m_ior_air / n_real_corr;
+        Spectrum theta_t = dr::asin(dr::sin(theta_i) * ior_prop);
 
-        //  Compute the real and complex parts of the index of refraction 
-        //  with Friedman and Sverdrup correction
-        Spectrum salinity = friedman_sverdrup_salinity(chlorinity);
-        Spectrum n_real_corrected = n_real + m_salinity_factor * salinity;
-        Spectrum n_real_sqr = dr::sqr(n_real_corrected);
-        Spectrum n_cplx_sqr = dr::sqr(n_cplx);
+        Spectrum diff = theta_i - theta_t;
+        Spectrum add = theta_i + theta_t;
 
-        //  Compute a values
-        Spectrum a1 = fresnel_a_1(n_real_sqr, n_cplx_sqr, chi);
-        Spectrum a2 = fresnel_a_2(n_real_sqr, n_cplx_sqr, chi);
-
-        //  Compute b values
-        Spectrum b1 = vb_1(n_real_sqr, n_cplx_sqr, chi);
-        Spectrum b2 = fresnel_b_2(n_real_corrected, n_cplx, chi);
-
-        //  Compute u² and v²
-        Spectrum u_sqr = fresnel_u_sqr(a1, a2);
-        Spectrum v_sqr = fresnel_v_sqr(a1, a2);
-
-        //  Compute u and v
-        Spectrum u = dr::sqrt(u_sqr);
-        Spectrum v = dr::sqrt(v_sqr);
-
-        //  Compute the Fresnel reflection coefficient
-        Spectrum left = (dr::sqr(b1 - u) + dr::sqr(b2 + v)) / (dr::sqr(b1 + u) + dr::sqr(b2 - v));
-        Spectrum right = (dr::sqr(cos_chi - u) + v_sqr) / (dr::sqr(cos_chi + u) + v_sqr);
+        Spectrum left = dr::sqr(dr::sin(diff) / dr::sin(add));
+        Spectrum right = dr::sqr(dr::tan(diff) / dr::tan(add));
 
         return 0.5f * (left + right);
     }
@@ -167,6 +144,10 @@ public:
         return numerator / denominator;
     }
 
+    Spectrum eval_underlight() {
+        
+    }
+
 private:
     // Ocean properties
     OceanProperties<Float, Spectrum> m_ocean_props;
@@ -177,6 +158,7 @@ private:
     ScalarFloat m_c_04 = 0.23f;
 
     // Fresnel parameters
+    ScalarFloat m_ior_air = 1.000293f;
     ScalarFloat m_salinity_factor = 0.00017492711f;
 
     // Underlight parameters
@@ -216,37 +198,6 @@ private:
     // Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
     Spectrum friedman_sverdrup_salinity(const Spectrum &chlorinity) {
         return 0.03f + 1.805f * chlorinity;
-    }
-
-    Spectrum fresnel_chi(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
-        auto cos_two_chi = dr::cos(theta_o) * dr::cos(theta_i) + dr::sin(theta_o) * dr::sin(theta_i) * dr::cos(phi);
-        return dr::acos(cos_two_chi) / 2.0f;
-    }
-
-    Spectrum fresnel_u_sqr(const Spectrum &a_1, const Spectrum &a_2) {
-        return dr::abs(a_1 + a_2) / 2.0f;
-    }
-
-    Spectrum fresnel_v_sqr(const Spectrum &a_1, const Spectrum &a_2) {
-        return dr::abs(-a_1 + a_2) / 2.0f;
-    }
-
-    Spectrum fresnel_a_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
-        return dr::abs(n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
-    }
-
-    Spectrum fresnel_a_2(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
-        Spectrum t_1 = (n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
-        Spectrum t_2 = 4.0f * n_real_sqr * n_cplx_sqr;
-        return dr::sqrt(dr::sqr(t_1) + t_2);
-    }
-
-    Spectrum fresnel_b_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
-        return (n_real_sqr - n_cplx_sqr) * dr::cos(chi);
-    }
-
-    Spectrum fresnel_b_2(const Spectrum &n_real, const Spectrum &n_cplx, const Spectrum &chi) {
-        return 2.0f * (n_real + n_cplx) * dr::cos(chi);
     }
 
     Spectrum underlight_downwelling_transmittance() {
