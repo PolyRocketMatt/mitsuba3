@@ -8,191 +8,16 @@
 NAMESPACE_BEGIN(mitsuba)
 
 // Header content - Potentially move somewhere else later
-#ifndef OCEAN_DIST
-#define OCEAN_DIST
+#ifndef OCEAN_PROPS
+#define OCEAN_PROPS
 
 template<typename Float, typename Spectrum>
-class CoxMunkDistribution {
+class OceanProperties {
 public:
     MI_IMPORT_TYPES()
 
-    Spectrum eval(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi_i, const Spectrum &phi_w, const Spectrum &wind_speed) const {
-        // Difference between the azimuth of th incoming light direction and 
-        // the azimuth of the wind speed.
-        Spectrum chi = phi_i - phi_w;
-
-        // Compute the Cox-Munk slope distribution, term by term
-        Spectrum s_c = dr::sqrt(s_c_sqr(wind_speed));
-        Spectrum s_u = dr::sqrt(s_u_sqr(wind_speed));
-
-        Spectrum ksi = z_x_prime(theta_i, theta_o, chi) / s_c;
-        Spectrum eta = z_y_prime(theta_i, theta_o, chi) / s_u;
-    
-        Spectrum ksi_sqr = ksi * ksi;
-        Spectrum eta_sqr = eta * eta;
-
-        Spectrum normalization_c = 1.f / (dr::TwoPi<Float> * s_c * s_u);
-        Spectrum exp_factor = dr::exp(-0.5 * (ksi_sqr + eta_sqr));
-
-        Spectrum a = (c_21(wind_speed) / 2.0f) * (ksi_sqr - 1.0f) * eta;
-        Spectrum b = (c_03(wind_speed) / 6.0f) * (eta_sqr * eta - 3.0f * eta);
-        Spectrum c = (m_c_40 / 24.0f) * (ksi_sqr * ksi_sqr - 6.0f * ksi_sqr + 3.0f);
-        Spectrum d = (m_c_22 / 4.0f) * (ksi_sqr - 1.0f) * (eta_sqr - 1.0f);
-        Spectrum e = (m_c_04 / 24.0f) * (eta_sqr * eta_sqr - 6.0f * eta_sqr + 3.0f);
-
-        // Combine
-        return normalization_c * exp_factor * (1.0f - a - b + c + d + e);
-    }
-private:
-    ScalarFloat m_c_40 = 0.40f;
-    ScalarFloat m_c_22 = 0.12f;
-    ScalarFloat m_c_04 = 0.23f;
-
-    Spectrum c_21(const Spectrum &wind_speed) const {
-        return 0.01f - 0.0086f * wind_speed;
-    }
-
-    Spectrum c_03(const Spectrum &wind_speed) const {
-        return 0.04f - 0.033f * wind_speed;
-    }
-
-    Spectrum s_c_sqr(const Spectrum &wind_speed) const {
-        return 0.003f + 0.00192f * wind_speed;
-    }
-
-    Spectrum s_u_sqr(const Spectrum &wind_speed) const {
-        return 0.00316f * wind_speed;
-    }
-
-    Spectrum z_x(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
-        return (-dr::sin(theta_o) * dr::sin(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
-    }
-
-    Spectrum z_y(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
-        return (dr::sin(theta_i) + dr::sin(theta_o) * dr::cos(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
-    }
-
-    Spectrum z_x_prime(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &chi) const {
-        return z_x(theta_i, theta_o, chi) * dr::cos(chi) + z_y(theta_i, theta_o, chi) * dr::sin(chi);
-    }
-
-    Spectrum z_y_prime(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &chi) const {
-        return -z_x(theta_i, theta_o, chi) * dr::sin(chi) + z_y(theta_i, theta_o, chi) * dr::cos(chi);
-    }
-};
-
-template<typename Float, typename Spectrum>
-class OceanFresnel {
-public:
-    MI_IMPORT_TYPES()
-
-    Spectrum eval(const Spectrum &theta_i, const Spectrum &theta_o, 
-                  const Spectrum &phi_i, const Spectrum &phi_o, 
-                  const Spectrum &n_real, const Spectrum &n_cplx,
-                  const Spectrum &chlorinity) {
-        Spectrum phi_rel = phi_i - phi_o;
-        Spectrum chi = chi(theta_i, theta_o, phi_rel);
-        Spectrum cos_chi = dr::cos(chi);
-
-        //  Compute the real and complex parts of the index of refraction 
-        //  with Friedman and Sverdrup correction
-        Spectrum salinity = friedman_sverdrup_salinity(chlorinity);
-        Spectrum n_real_corrected = n_real + m_salinity_factor * salinity;
-        Spectrum n_real_sqr = dr::sqr(n_real_corrected);
-        Spectrum n_cplx_sqr = dr::sqr(n_cplx);
-
-        //  Compute a values
-        Spectrum a1 = a_1(n_real_sqr, n_cplx_sqr, chi);
-        Spectrum a2 = a_2(n_real_sqr, n_cplx_sqr, chi);
-
-        //  Compute b values
-        Spectrum b1 = b_1(n_real_sqr, n_cplx_sqr, chi);
-        Spectrum b2 = b_2(n_real_corrected, n_cplx, chi);
-
-        //  Compute u² and v²
-        Spectrum u_sqr = u_sqr(a1, a2);
-        Spectrum v_sqr = v_sqr(a1, a2);
-
-        //  Compute u and v
-        Spectrum u = dr::sqrt(u_sqr);
-        Spectrum v = dr::sqrt(v_sqr);
-
-        //  Compute the Fresnel reflection coefficient
-        Spectrum left = (dr::sqr(b1 - u) + dr::sqr(b2 + v)) / (dr::sqr(b1 + u) + dr::sqr(b2 - v));
-        Spectrum right = (dr::sqr(cos_chi - u) + v_sqr) / (dr::sqr(cos_chi + u) + v_sqr);
-
-        return 0.5f * (left + right);
-    }
-private:
-    ScalarFloat m_salinity_factor = 0.00017492711f;
-
-    //  Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
-    Spectrum friedman_sverdrup_salinity(const Spectrum &chlorinity) {
-        return 0.03f + 1.805f * chlorinity;
-    }
-
-    Spectrum chi(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
-        auto cos_two_chi = dr::cos(theta_o) * dr::cos(theta_i) + dr::sin(theta_o) * dr::sin(theta_i) * dr::cos(phi);
-        return dr::acos(cos_two_chi) / 2.0f;
-    }
-
-    Spectrum u_sqr(const Spectrum &a_1, const Spectrum &a_2) {
-        return dr::abs(a_1 + a_2) / 2.0f;
-    }
-
-    Spectrum v_sqr(const Spectrum &a_1, const Spectrum &a_2) {
-        return dr::abs(-a_1 + a_2) / 2.0f;
-    }
-
-    Spectrum a_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
-        return dr::abs(n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
-    }
-
-    Spectrum a_2(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
-        auto t_1 = (n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
-        auto t_2 = 4.0f * n_real_sqr * n_cplx_sqr;
-        return dr::sqrt(dr::sqr(t_1) + t_2);
-    }
-
-    Spectrum b_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
-        return (n_real_sqr - n_cplx_sqr) * dr::cos(chi);
-    }
-
-    Spectrum b_2(const Spectrum &n_real, const Spectrum &n_cplx, const Spectrum &chi) {
-        return 2.0f * (n_real + n_cplx) * dr::cos(chi);
-    }
-
-};
-
-#endif // OCEAN_DIST
-
-template <typename Float, typename Spectrum>
-class OceanicBSDF final : public BSDF<Float, Spectrum> {
-public:
-    MI_IMPORT_BASE(BSDF, m_flags, m_components)
-    MI_IMPORT_TYPES(Texture)
-
-    OceanicBSDF(const Properties &props) : Base(props) {
-        // Retrieve the parameters used in 6SV
-        m_wavelength = props.texture<Texture>("wavelength");
-        m_wind_speed = props.texture<Texture>("wind_speed");
-        m_wind_direction = props.texture<Texture>("wind_direction");
-        m_salinity = props.texture<Texture>("salinity");
-
-        //  Wavelengths considered by 6SV
-        std::vector<ScalarFloat> wc_wavelengths = { 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1,
-                                                    1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1,
-                                                    2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1,
-                                                    3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0 };
-
-        // Effective reflectance values for whitecaps, given originally
-        // by Whitlock et al. 1982
-        std::vector<ScalarFloat> wc_data =    { 0.220, 0.220, 0.220, 0.220, 0.220, 0.220, 0.215, 0.210, 0.200, 0.190,
-                                                0.175, 0.155, 0.130, 0.080, 0.100, 0.105, 0.100, 0.080, 0.045, 0.055,
-                                                0.065, 0.060, 0.055, 0.040, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-                                                0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 };
-
-        // Real part of the complex index of refraction of water (Hale & Querry 1973)
+    OceanProperties(const Properties &props) {
+        // Complex index of refraction of water (Hale & Querry 1973)
         std::vector<ScalarFloat> ior_wavelengths = {    0.200, 0.225, 0.250, 0.275, 0.300, 0.325, 0.345 ,0.375, 0.400, 0.425 ,
                                                         0.445, 0.475, 0.500, 0.525, 0.550, 0.575, 0.600, 0.625, 0.650, 0.675,
                                                         0.700, 0.725, 0.750, 0.775, 0.800, 0.825, 0.850, 0.875, 0.900, 0.925,
@@ -220,6 +45,228 @@ public:
                                                     1.92e-01, 1.35e-01, 9.24e-02, 6.10e-02, 3.68e-02, 
                                                     2.61e-02, 1.95e-02, 1.32e-02, 9.40e-03, 5.15e-03, 
                                                     3.60e-03, 3.40e-03, 3.80e-03, 4.60e-03 };
+
+        m_ior_real = IrregularContinuousDistribution<Float>(
+            ior_wavelengths.data(), ior_real_data.data(), ior_real_data.size()
+        );
+
+        m_ior_imag = IrregularContinuousDistribution<Float>(
+            ior_wavelengths.data(), ior_cplx_data.data(), ior_cplx_data.size()
+        );
+    }
+
+private:
+    //  2. Complex IOR of water (Hale & Querry 1973)
+    IrregularContinuousDistribution<Float> m_ior_real;
+    IrregularContinuousDistribution<Float> m_ior_imag;
+};
+
+template<typename Float, typename Spectrum>
+class CoxMunkDistribution {
+public:
+    MI_IMPORT_TYPES()
+private:
+};
+
+template<typename Float, typename Spectrum>
+class OceanUtilities {
+public:
+    MI_IMPORT_TYPES()
+
+    Spectrum eval_cox_munk(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi_i, const Spectrum &phi_w, const Spectrum &wind_speed) const {
+        // Difference between the azimuth of th incoming light direction and 
+        // the azimuth of the wind speed.
+        Spectrum chi = phi_i - phi_w;
+
+        // Compute the Cox-Munk slope distribution, term by term
+        Spectrum s_c = dr::sqrt(cm_s_c_sqr(wind_speed));
+        Spectrum s_u = dr::sqrt(cm_s_u_sqr(wind_speed));
+
+        Spectrum ksi = cm_z_x_prime(theta_i, theta_o, chi) / s_c;
+        Spectrum eta = cm_z_y_prime(theta_i, theta_o, chi) / s_u;
+    
+        Spectrum ksi_sqr = ksi * ksi;
+        Spectrum eta_sqr = eta * eta;
+
+        Spectrum normalization_c = 1.f / (dr::TwoPi<Float> * s_c * s_u);
+        Spectrum exp_factor = dr::exp(-0.5 * (ksi_sqr + eta_sqr));
+
+        Spectrum a = (cm_c_21(wind_speed) / 2.0f) * (ksi_sqr - 1.0f) * eta;
+        Spectrum b = (cm_c_03(wind_speed) / 6.0f) * (eta_sqr * eta - 3.0f * eta);
+        Spectrum c = (m_c_40 / 24.0f) * (ksi_sqr * ksi_sqr - 6.0f * ksi_sqr + 3.0f);
+        Spectrum d = (m_c_22 / 4.0f) * (ksi_sqr - 1.0f) * (eta_sqr - 1.0f);
+        Spectrum e = (m_c_04 / 24.0f) * (eta_sqr * eta_sqr - 6.0f * eta_sqr + 3.0f);
+
+        // Combine
+        return normalization_c * exp_factor * (1.0f - a - b + c + d + e);
+    }
+
+    Spectrum eval_fresnel(const Spectrum &theta_i, const Spectrum &theta_o, 
+                  const Spectrum &phi_i, const Spectrum &phi_o, 
+                  const Spectrum &n_real, const Spectrum &n_cplx,
+                  const Spectrum &chlorinity) {
+        Spectrum phi_rel = phi_i - phi_o;
+        Spectrum chi = fresnel_chi(theta_i, theta_o, phi_rel);
+        Spectrum cos_chi = dr::cos(chi);
+
+        //  Compute the real and complex parts of the index of refraction 
+        //  with Friedman and Sverdrup correction
+        Spectrum salinity = friedman_sverdrup_salinity(chlorinity);
+        Spectrum n_real_corrected = n_real + m_salinity_factor * salinity;
+        Spectrum n_real_sqr = dr::sqr(n_real_corrected);
+        Spectrum n_cplx_sqr = dr::sqr(n_cplx);
+
+        //  Compute a values
+        Spectrum a1 = fresnel_a_1(n_real_sqr, n_cplx_sqr, chi);
+        Spectrum a2 = fresnel_a_2(n_real_sqr, n_cplx_sqr, chi);
+
+        //  Compute b values
+        Spectrum b1 = vb_1(n_real_sqr, n_cplx_sqr, chi);
+        Spectrum b2 = fresnel_b_2(n_real_corrected, n_cplx, chi);
+
+        //  Compute u² and v²
+        Spectrum u_sqr = fresnel_u_sqr(a1, a2);
+        Spectrum v_sqr = fresnel_v_sqr(a1, a2);
+
+        //  Compute u and v
+        Spectrum u = dr::sqrt(u_sqr);
+        Spectrum v = dr::sqrt(v_sqr);
+
+        //  Compute the Fresnel reflection coefficient
+        Spectrum left = (dr::sqr(b1 - u) + dr::sqr(b2 + v)) / (dr::sqr(b1 + u) + dr::sqr(b2 - v));
+        Spectrum right = (dr::sqr(cos_chi - u) + v_sqr) / (dr::sqr(cos_chi + u) + v_sqr);
+
+        return 0.5f * (left + right);
+    }
+private:
+    // Cox-Munk distribution parameters
+    ScalarFloat m_c_40 = 0.40f;
+    ScalarFloat m_c_22 = 0.12f;
+    ScalarFloat m_c_04 = 0.23f;
+
+    // Fresnel parameters
+    ScalarFloat m_salinity_factor = 0.00017492711f;
+
+    // Underlight parameters
+
+    Spectrum cm_c_21(const Spectrum &wind_speed) const {
+        return 0.01f - 0.0086f * wind_speed;
+    }
+
+    Spectrum cm_c_03(const Spectrum &wind_speed) const {
+        return 0.04f - 0.033f * wind_speed;
+    }
+
+    Spectrum cm_s_c_sqr(const Spectrum &wind_speed) const {
+        return 0.003f + 0.00192f * wind_speed;
+    }
+
+    Spectrum cm_s_u_sqr(const Spectrum &wind_speed) const {
+        return 0.00316f * wind_speed;
+    }
+
+    Spectrum cm_z_x(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
+        return (-dr::sin(theta_o) * dr::sin(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
+    }
+
+    Spectrum cm_z_y(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
+        return (dr::sin(theta_i) + dr::sin(theta_o) * dr::cos(phi)) / (dr::cos(theta_i) * dr::cos(theta_o));
+    }
+
+    Spectrum cm_z_x_prime(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &chi) const {
+        return cm_z_x(theta_i, theta_o, chi) * dr::cos(chi) + cm_z_y(theta_i, theta_o, chi) * dr::sin(chi);
+    }
+
+    Spectrum cm_z_y_prime(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &chi) const {
+        return -cm_z_x(theta_i, theta_o, chi) * dr::sin(chi) + cm_z_y(theta_i, theta_o, chi) * dr::cos(chi);
+    }
+
+    // Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
+    Spectrum friedman_sverdrup_salinity(const Spectrum &chlorinity) {
+        return 0.03f + 1.805f * chlorinity;
+    }
+
+    Spectrum fresnel_chi(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi) const {
+        auto cos_two_chi = dr::cos(theta_o) * dr::cos(theta_i) + dr::sin(theta_o) * dr::sin(theta_i) * dr::cos(phi);
+        return dr::acos(cos_two_chi) / 2.0f;
+    }
+
+    Spectrum fresnel_u_sqr(const Spectrum &a_1, const Spectrum &a_2) {
+        return dr::abs(a_1 + a_2) / 2.0f;
+    }
+
+    Spectrum fresnel_v_sqr(const Spectrum &a_1, const Spectrum &a_2) {
+        return dr::abs(-a_1 + a_2) / 2.0f;
+    }
+
+    Spectrum fresnel_a_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
+        return dr::abs(n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
+    }
+
+    Spectrum fresnel_a_2(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
+        Spectrum t_1 = (n_real_sqr - n_cplx_sqr - dr::sqr(dr::sin(chi)));
+        Spectrum t_2 = 4.0f * n_real_sqr * n_cplx_sqr;
+        return dr::sqrt(dr::sqr(t_1) + t_2);
+    }
+
+    Spectrum fresnel_b_1(const Spectrum &n_real_sqr, const Spectrum &n_cplx_sqr, const Spectrum &chi) {
+        return (n_real_sqr - n_cplx_sqr) * dr::cos(chi);
+    }
+
+    Spectrum fresnel_b_2(const Spectrum &n_real, const Spectrum &n_cplx, const Spectrum &chi) {
+        return 2.0f * (n_real + n_cplx) * dr::cos(chi);
+    }
+
+    Spectrum underlight_downwelling_transmittance() {
+        // Integrate both azimuthal and zenithal angles
+        // TODO: Make this a Monte Carlo estimtor
+        Spectrum opacity = 0.0f;
+
+        for (UInt32 zenith = 0; zenith < 90; zenith += 1) {
+                // To radian
+                Float theta = dr::deg_to_rad(zenith);
+
+                // Construct a vector for the azimuthal angle. 
+                // To maximize JIT, the azimuthal angle can be
+                // computed in parallel.
+                Float phis = dr::linspace(Float(0), Float(360), 360);
+                Float cos_theta = dr::cos(theta);
+                Float sin_theta = dr::sin(theta);
+
+            }
+
+        return 1.0f - opacity;
+    }
+
+};
+
+#endif // OCEAN_PROPS
+
+template <typename Float, typename Spectrum>
+class OceanicBSDF final : public BSDF<Float, Spectrum> {
+public:
+    MI_IMPORT_BASE(BSDF, m_flags, m_components)
+    MI_IMPORT_TYPES(Texture)
+
+    OceanicBSDF(const Properties &props) : Base(props) {
+        // Retrieve the parameters used in 6SV
+        m_wavelength = props.texture<Texture>("wavelength");
+        m_wind_speed = props.texture<Texture>("wind_speed");
+        m_wind_direction = props.texture<Texture>("wind_direction");
+        m_salinity = props.texture<Texture>("salinity");
+
+        //  Wavelengths considered by 6SV
+        std::vector<ScalarFloat> wc_wavelengths = { 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1,
+                                                    1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1,
+                                                    2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1,
+                                                    3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0 };
+
+        // Effective reflectance values for whitecaps, given originally
+        // by Whitlock et al. 1982
+        std::vector<ScalarFloat> wc_data =    { 0.220, 0.220, 0.220, 0.220, 0.220, 0.220, 0.215, 0.210, 0.200, 0.190,
+                                                0.175, 0.155, 0.130, 0.080, 0.100, 0.105, 0.100, 0.080, 0.045, 0.055,
+                                                0.065, 0.060, 0.055, 0.040, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+                                                0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 };
 
         m_eff_reflectance = IrregularContinuousDistribution<Float>(
             wc_wavelengths.data(), wc_data.data(), wc_data.size()
@@ -365,9 +412,6 @@ private:
     // Distributions used for
     //  1. Effective reflectance of whitecaps (Whitlock et al 1982, Koepke 1984)
     IrregularContinuousDistribution<Float> m_eff_reflectance;
-    //  2. Complex IOR of water (Hale & Querry 1973)
-    IrregularContinuousDistribution<Float> m_ior_real;
-    IrregularContinuousDistribution<Float> m_ior_imag;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(OceanicBSDF, BSDF)
