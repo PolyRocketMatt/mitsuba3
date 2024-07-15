@@ -16,7 +16,7 @@ class OceanProperties {
 public:
     MI_IMPORT_TYPES()
 
-    OceanProperties(const Properties &props) {
+    OceanProperties() {
         // Complex index of refraction of water (Hale & Querry 1973)
         std::vector<ScalarFloat> ior_wavelengths = {    0.200, 0.225, 0.250, 0.275, 0.300, 0.325, 0.345 ,0.375, 0.400, 0.425 ,
                                                         0.445, 0.475, 0.500, 0.525, 0.550, 0.575, 0.600, 0.625, 0.650, 0.675,
@@ -55,23 +55,26 @@ public:
         );
     }
 
+    Float ior_real(const Float &wavelength) const {
+        return m_ior_real.eval_pdf(wavelength);
+    }
+
+    Float ior_cplx(const Float &wavelength) const {
+        return m_ior_imag.eval_pdf(wavelength);
+    }
+
 private:
-    //  2. Complex IOR of water (Hale & Querry 1973)
+    // Real/Complex IOR of water (Hale & Querry 1973)
     IrregularContinuousDistribution<Float> m_ior_real;
     IrregularContinuousDistribution<Float> m_ior_imag;
-};
-
-template<typename Float, typename Spectrum>
-class CoxMunkDistribution {
-public:
-    MI_IMPORT_TYPES()
-private:
 };
 
 template<typename Float, typename Spectrum>
 class OceanUtilities {
 public:
     MI_IMPORT_TYPES()
+
+    OceanUtilities() : m_ocean_props() { }
 
     Spectrum eval_cox_munk(const Spectrum &theta_i, const Spectrum &theta_o, const Spectrum &phi_i, const Spectrum &phi_w, const Spectrum &wind_speed) const {
         // Difference between the azimuth of th incoming light direction and 
@@ -138,7 +141,36 @@ public:
 
         return 0.5f * (left + right);
     }
+
+    Spectrum eval_glint(const Float &wavelength, const Float &wo, const Float &wo, const Float &wind_direction, const Float &wind_speed,
+                        const Float &chlorinity) {
+        // Transform directions into azimuthal and zenithal angles
+        Float theta_i = dr::acos(wo.z());
+        Float theta_o = dr::acos(wo.z());
+        Float phi_i = dr::atan2(wo.y(), wo.x());
+        Float phi_o = dr::atan2(wo.y(), wo.x());
+
+        // Get the real/complex IOR of water
+        Float n_real = m_ocean_props.ior_real(wavelength);
+        Float n_cplx = m_ocean_props.ior_cplx(wavelength);
+
+        // Compute sun glint reflectance
+        Spectrum specular_prob = eval_cox_munk(theta_i, theta_o, phi_i, wind_direction, wind_speed);
+        Spectrum fresnel_coeff = eval_fresnel(theta_i, theta_o, phi_i, phi_o, n_real, n_cplx, chlorinity);
+
+        // Compute reflectance
+        Float cos_two_omega = dr::cos(theta_o) * dr::cos(theta_i) * dr::sin(phi_o) * dr::sin(phi_i) * dr::cos(phi_i - phi_o);
+        Float beta = (dr::cos(theta_i) * dr::cos(theta_o)) / (dr::sqrt(2f + 2f * cos_two_omega));
+        Spectrum numerator = dr::Pi * specular_prob * fresnel_coeff;
+        Spectrum denominator = 4f * dr::cos(theta_i) * dr::cos(theta_o);
+
+        return numerator / denominator;
+    }
+
 private:
+    // Ocean properties
+    OceanProperties<Float, Spectrum> m_ocean_props;
+
     // Cox-Munk distribution parameters
     ScalarFloat m_c_40 = 0.40f;
     ScalarFloat m_c_22 = 0.12f;
