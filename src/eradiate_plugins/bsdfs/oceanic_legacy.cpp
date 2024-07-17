@@ -344,7 +344,42 @@ private:
         std::pair<Float, Float> gs_azimuth  = quad::gauss_lobatto<Float>(48);
         std::pair<Float, Float> gs_zenith   = quad::gauss_lobatto<Float>(24);
 
-        return 0.f;
+        Float azimuth_pts = gs_azimuth.first;
+        Float azimuth_weights = gs_azimuth.second;
+        Float zenith_pts = gs_zenith.first;
+        Float zenith_weights = gs_zenith.second;
+
+        // Transformation of the zenith and azimuthal angles
+        Float transformed_azimuth_pts = (azimuth_pts + 1.0f) * m_pi;
+        Float transformed_zenith_pts = (zenith_pts + 1.0f) * (m_pi_half / 2.0f);
+    
+        // Quadrature
+        Spectrum downwelling_opacity = 0.0f;
+        Spectrum summ = 0.0f;
+        for (int i = 0; i < azimuth_pts; ++i) {
+            for (int j = 0; j < zenith_pts; ++j) {
+                Float phi_d = transformed_azimuth_pts[i];
+                Float theta_d = transformed_zenith_pts[j];
+                Float azimuth_weight = azimuth_weights[i];
+                Float zenith_weight = zenith_weights[j];
+
+                // Cosine/sine of the angles
+                Float c_theta_d = dr::cos(theta_d);
+                Float s_theta_d = dr::sin(theta_d);
+
+                // Compute the reflectance
+                Spectrum reflectance = eval_glint(wavelength, theta_i, theta_d, phi_i, phi_d, 
+                                                  wind_direction, wind_speed, chlorinity);
+
+                // Quadrature step
+                Float weight = azimuth_weight * zenith_weight;
+                Float factor = c_theta_d * s_theta_d * weight;
+                summ += factor;
+                downwelling_opacity += reflectance * factor;
+            }
+        }
+
+        return 1.f - downwelling_opacity / summ;
     }
 
 };
