@@ -17,6 +17,16 @@ public:
     MI_IMPORT_TYPES()
 
     OceanProperties() {
+        // Effective reflectance of whitecaps (Whitlock et al. 1982)
+        std::vector<ScalarFloat> wc_wavelengths = {     0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1,
+                                                        1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1,
+                                                        2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1,
+                                                        3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0 };
+        std::vector<ScalarFloat> wc_data = {    0.220, 0.220, 0.220, 0.220, 0.220, 0.220, 0.215, 0.210, 0.200, 0.190,
+                                                0.175, 0.155, 0.130, 0.080, 0.100, 0.105, 0.100, 0.080, 0.045, 0.055,
+                                                0.065, 0.060, 0.055, 0.040, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
+                                                0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 };
+
         // Complex index of refraction of water (Hale & Querry 1973)
         std::vector<ScalarFloat> ior_wavelengths = {    0.200, 0.225, 0.250, 0.275, 0.300, 0.325, 0.345 ,0.375, 0.400, 0.425 ,
                                                         0.445, 0.475, 0.500, 0.525, 0.550, 0.575, 0.600, 0.625, 0.650, 0.675,
@@ -46,12 +56,77 @@ public:
                                                     2.61e-02, 1.95e-02, 1.32e-02, 9.40e-03, 5.15e-03, 
                                                     3.60e-03, 3.40e-03, 3.80e-03, 4.60e-03 };
 
+        // Water scattering and attenuation coefficient data (Morel 1988)
+        std::vector<ScalarFloat> attn_wavelenghts = {   400, 405, 410, 415, 420, 425, 430, 435, 440, 445, 
+                                                        450, 455, 460, 465, 470, 475, 480, 485, 490, 495, 
+                                                        500, 505, 510, 515, 520, 525, 530, 535, 540, 545, 
+                                                        550, 555, 560, 565, 570, 575, 580, 585, 590, 595, 
+                                                        600, 605, 610, 615, 620, 625, 630, 635, 640, 645, 
+                                                        650, 655, 660, 665, 670, 675, 680, 685, 690, 695, 
+                                                        700 };
+        std::vector<ScalarFloat> attn_k = {     0.0209, 0.0200, 0.0196, 0.0189, 0.0183, 0.0182, 0.0171, 0.0170, 0.0168, 0.0166,
+                                                0.0168, 0.0170, 0.0173, 0.0174, 0.0175, 0.0184, 0.0194, 0.0203, 0.0217, 0.0240,
+                                                0.0271, 0.0320, 0.0384, 0.0445, 0.0490, 0.0505, 0.0518, 0.0543, 0.0568, 0.0615,
+                                                0.0640, 0.0640, 0.0717, 0.0762, 0.0807, 0.0940, 0.1070, 0.1280, 0.1570, 0.2000,
+                                                0.2530, 0.2790, 0.2960, 0.3030, 0.3100, 0.3150, 0.3200, 0.3250, 0.3300, 0.3400,
+                                                0.3500, 0.3700, 0.4050, 0.4180, 0.4300, 0.4400, 0.4500, 0.4700, 0.5000, 0.5500,
+                                                0.6500 };
+        std::vector<ScalarFloat> attn_chi = {   0.1100, 0.1110, 0.1125, 0.1135, 0.1126, 0.1104, 0.1078, 0.1065, 0.1041, 0.0996,
+                                                0.0971, 0.0939, 0.0896, 0.0859, 0.0823, 0.0788, 0.0746, 0.0726, 0.0690, 0.0660,
+                                                0.0636, 0.0600, 0.0578, 0.0540, 0.0498, 0.0475, 0.0467, 0.0450, 0.0440, 0.0426,
+                                                0.0410, 0.0400, 0.0390, 0.0375, 0.0360, 0.0340, 0.0330, 0.0328, 0.0325, 0.0330,
+                                                0.0340, 0.0350, 0.0360, 0.0375, 0.0385, 0.0400, 0.0420, 0.0430, 0.0440, 0.0445,
+                                                0.0450, 0.0460, 0.0475, 0.0490, 0.0515, 0.0520, 0.0505, 0.0440, 0.0390, 0.0340,
+                                                0.0300 };
+        std::vector<ScalarFloat> attn_e = {     0.668, 0.672, 0.680, 0.687, 0.693, 0.701, 0.707, 0.708, 0.707, 0.704,
+                                                0.701, 0.699, 0.700, 0.703, 0.703, 0.703, 0.703, 0.704, 0.702, 0.700,
+                                                0.700, 0.695, 0.690, 0.685, 0.680, 0.675, 0.670, 0.665, 0.660, 0.655,
+                                                0.650, 0.645, 0.640, 0.630, 0.623, 0.615, 0.610, 0.614, 0.618, 0.622,
+                                                0.626, 0.630, 0.634, 0.638, 0.642, 0.647, 0.653, 0.658, 0.663, 0.667,
+                                                0.672, 0.677, 0.682, 0.687, 0.695, 0.697, 0.693, 0.665, 0.640, 0.620,
+                                                0.600 };
+        // IMPORTANT: This table uses the values provided by Morel, which are different than the ones from 6SV
+        std::vector<ScalarFloat> molecular_scatter_coeffs = {   0.00618095, 0.00578095, 0.00547619, 0.00517619, 0.00492222, 
+                                                                0.0046746 , 0.00447143, 0.00426825, 0.00406508, 0.0038619 , 
+                                                                0.00365873, 0.00346667, 0.00331429, 0.0031619 , 0.00300952, 
+                                                                0.00287143, 0.00276984, 0.00265238, 0.0025    , 0.00236508, 
+                                                                0.00226349, 0.0021619 , 0.00206032, 0.00195873, 0.00185714, 
+                                                                0.00177778, 0.00172698, 0.00167619, 0.0016254 , 0.0015746 , 
+                                                                0.00152381, 0.00144603, 0.00134444, 0.0013    , 0.0013    , 
+                                                                0.00126984, 0.00121905, 0.00116825, 0.00111746, 0.00107   , 
+                                                                0.00102429, 0.00098556, 0.00095   , 0.0009181 , 0.00088762, 
+                                                                0.00085714, 0.00082667, 0.00079619, 0.00076571, 0.00073937, 
+                                                                0.00071397, 0.00069286, 0.00067254, 0.00065222, 0.0006319 , 
+                                                                0.00061159, 0.00059127, 0.00057095, 0.00055063, 0.00053524, 
+                                                                0.00052 };
+
+        // Construct distributions from the provided data sets
+        m_effective_reflectance = IrregularContinuousDistribution<Float>(
+            wc_wavelengths.data(), wc_data.data(), wc_data.size()
+        );
+
         m_ior_real = IrregularContinuousDistribution<Float>(
-            ior_wavelengths.data(), ior_real_data.data(), ior_real_data.size()
+            wavelengths.data(), ior_real_data.data(), ior_real_data.size()
         );
 
         m_ior_imag = IrregularContinuousDistribution<Float>(
-            ior_wavelengths.data(), ior_cplx_data.data(), ior_cplx_data.size()
+            wavelengths.data(), ior_cplx_data.data(), ior_cplx_data.size()
+        );
+
+        m_attn_k = IrregularContinuousDistribution<Float>(
+            attn_wavelengths.data(), attn_k.data(), attn_k.size()
+        );
+
+        m_attn_chi = IrregularContinuousDistribution<Float>(
+            attn_wavelengths.data(), attn_chi.data(), attn_chi.size()
+        );
+
+        m_attn_e = IrregularContinuousDistribution<Float>(
+            attn_wavelengths.data(), attn_e.data(), attn_e.size()
+        );
+
+        m_molecular_scatter_coeffs = IrregularContinuousDistribution<Float>(
+            attn_wavelengths.data(), molecular_scatter_coeffs.data(), molecular_scatter_coeffs.size()
         );
     }
 
@@ -63,10 +138,39 @@ public:
         return m_ior_imag.eval_pdf(wavelength);
     }
 
+    Float effective_reflectance(const Float &wavelength) const {
+        return m_effective_reflectance.eval_pdf(wavelength);
+    }
+
+    Float attn_k(const Float &wavelength) const {
+        return m_attn_k.eval_pdf(wavelength);
+    }
+
+    Float attn_chi(const Float &wavelength) const {
+        return m_attn_chi.eval_pdf(wavelength);
+    }
+
+    Float attn_e(const Float &wavelength) const {
+        return m_attn_e.eval_pdf(wavelength);
+    }
+
+    Float molecular_scatter_coeff(const Float &wavelength) const {
+        return m_molecular_scatter_coeffs.eval_pdf(wavelength);
+    }
+
 private:
+    // Effective reflectance of whitecaps
+    IrregularContinuousDistribution<Float> m_effective_reflectance;
+
     // Real/Complex IOR of water (Hale & Querry 1973)
     IrregularContinuousDistribution<Float> m_ior_real;
     IrregularContinuousDistribution<Float> m_ior_imag;
+
+    // Water scattering and attenuation coefficients (Morel 1988)
+    IrregularContinuousDistribution<Float> m_attn_k;
+    IrregularContinuousDistribution<Float> m_attn_chi;
+    IrregularContinuousDistribution<Float> m_attn_e;
+    IrregularContinuousDistribution<Float> m_molecular_scatter_coeffs;
 };
 
 template<typename Float, typename Spectrum>
@@ -75,6 +179,22 @@ public:
     MI_IMPORT_TYPES()
 
     OceanUtilities() : m_ocean_props() { }
+
+    Spectrum eval_whitecaps(const Spectrum &wavelength, const Spectrum &wind_speed) {
+        // Compute the fractional coverage of whitecaps
+        Spectrum coverage = m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda);
+
+        // Compute the efficiency factor
+        Spectrum efficiency = m_f_eff_base;
+
+        // Compute the effective reflectance
+        Spectrum eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
+
+        // Compute the whitecap reflectance
+        Spectrum whitecap_reflectance = coverage * efficiency * eff_reflectance;
+
+        return whitecap_reflectance;
+    }
 
     Spectrum eval_cox_munk(const Spectrum &phi_w, 
                            const Spectrum &z_x, const Spectrum &z_y,
@@ -196,6 +316,12 @@ private:
     // Simple constants
     Spectrum m_pi = dr::Pi;
     Spectrum m_pi_half = m_pi / 2.0f;
+
+    // Whitecap parameters
+    ScalarFloat m_f_eff_base = 0.4f;
+    ScalarFloat m_monahan_alpha = 2.951f * 1e-6;
+    ScalarFloat m_monahan_lambda = 3.52f;
+    ScalarFloat m_max_wind_speed = 37.241869f;
 
     // Cox-Munk distribution parameters
     ScalarFloat m_c_40 = 0.40f;
