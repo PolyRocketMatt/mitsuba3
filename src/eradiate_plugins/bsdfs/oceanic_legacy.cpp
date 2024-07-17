@@ -1,5 +1,6 @@
 #include <mitsuba/core/distr_1d.h>
 #include <mitsuba/core/properties.h>
+#include <mitsuba/core/quad.h>
 #include <mitsuba/core/spectrum.h>
 #include <mitsuba/core/warp.h>
 #include <mitsuba/render/bsdf.h>
@@ -57,7 +58,7 @@ public:
                                                     3.60e-03, 3.40e-03, 3.80e-03, 4.60e-03 };
 
         // Water scattering and attenuation coefficient data (Morel 1988)
-        std::vector<ScalarFloat> attn_wavelenghts = {   400, 405, 410, 415, 420, 425, 430, 435, 440, 445, 
+        std::vector<ScalarFloat> attn_wavelengths = {   400, 405, 410, 415, 420, 425, 430, 435, 440, 445, 
                                                         450, 455, 460, 465, 470, 475, 480, 485, 490, 495, 
                                                         500, 505, 510, 515, 520, 525, 530, 535, 540, 545, 
                                                         550, 555, 560, 565, 570, 575, 580, 585, 590, 595, 
@@ -106,11 +107,11 @@ public:
         );
 
         m_ior_real = IrregularContinuousDistribution<Float>(
-            wavelengths.data(), ior_real_data.data(), ior_real_data.size()
+            ior_wavelengths.data(), ior_real_data.data(), ior_real_data.size()
         );
 
         m_ior_imag = IrregularContinuousDistribution<Float>(
-            wavelengths.data(), ior_cplx_data.data(), ior_cplx_data.size()
+            ior_wavelengths.data(), ior_cplx_data.data(), ior_cplx_data.size()
         );
 
         m_attn_k = IrregularContinuousDistribution<Float>(
@@ -314,7 +315,7 @@ private:
     OceanProperties<Float, Spectrum> m_ocean_props;
 
     // Simple constants
-    Spectrum m_pi = dr::Pi;
+    Spectrum m_pi = dr::Pi<Float>;
     Spectrum m_pi_half = m_pi / 2.0f;
 
     // Whitecap parameters
@@ -339,26 +340,11 @@ private:
                                                   const Spectrum &theta_i, const Spectrum &phi_i,
                                                   const Spectrum &wind_direction, const Spectrum &wind_speed, 
                                                   const Spectrum &chlorinity) {
-        // Integrate both azimuthal and zenithal angles
-        // TODO: Make this a Monte Carlo estimtor?
-        Spectrum opacity = 0.0f;
-        Float n_real = m_ocean_props.ior_real(wavelength);
+        // Gauss-Lobatto quadrature weights and nodes (preferred since bounds are included)
+        std::pair<Float, Float> gs_azimuth  = quad::gauss_lobatto<Float>(48);
+        std::pair<Float, Float> gs_zenith   = quad::gauss_lobatto<Float>(24);
 
-        for (UInt32 zenith = 0; zenith < 90; zenith += 1) {
-                // To radian
-                Float theta = dr::deg_to_rad(zenith);
-
-                // Construct a vector for the azimuthal angle. 
-                // To maximize JIT, the azimuthal angle can be
-                // computed in parallel.
-                Float phis = dr::linspace(Float(0), Float(360), 360);
-                Spectrum glint = eval_glint(wavelength, theta_i, theta, phi_i, phis, wind_direction, wind_speed, chlorinity);  
-                Spectrum contribution = dr::sum(glint) * dr::sin(theta) * dr::cos(theta);
-
-                opacity += contribution;
-            }
-
-        return 1.0f - opacity;
+        return 0.f;
     }
 
 };
@@ -378,22 +364,8 @@ public:
         m_wind_direction = props.texture<Texture>("wind_direction");
         m_salinity = props.texture<Texture>("salinity");
 
-        //  Wavelengths considered by 6SV
-        std::vector<ScalarFloat> wc_wavelengths = { 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1,
-                                                    1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1,
-                                                    2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3.0, 3.1,
-                                                    3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4.0 };
-
-        // Effective reflectance values for whitecaps, given originally
-        // by Whitlock et al. 1982
-        std::vector<ScalarFloat> wc_data =    { 0.220, 0.220, 0.220, 0.220, 0.220, 0.220, 0.215, 0.210, 0.200, 0.190,
-                                                0.175, 0.155, 0.130, 0.080, 0.100, 0.105, 0.100, 0.080, 0.045, 0.055,
-                                                0.065, 0.060, 0.055, 0.040, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000,
-                                                0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000 };
-
-        m_eff_reflectance = IrregularContinuousDistribution<Float>(
-            wc_wavelengths.data(), wc_data.data(), wc_data.size()
-        );
+        // Initialize the ocean utilities
+        m_ocean_utils = new OceanUtilities<Float, Spectrum>();
 
         // Set the BSDF flags
         // => Whitecap reflectance is "diffuse"
@@ -445,50 +417,13 @@ public:
         // Compute the whitecap reflectance
         UnpolarizedSpectrum result(0.f);
         
-        // Compute the wind speed
-        Spectrum wind_speed = m_wind_speed->eval(si, active) * m_max_wind_speed;
-
-        // Based on the power-law provided by Monahan & Muircheartaigh 1980,
-        // the fractional whitecap coverage of whitecaps can be determined.
-        // Only if whitecaps are present, we compute the coverage.
-        Spectrum coverage = has_whitecap ? m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda) : 0.0f;
 
         if (has_whitecap) {
-            // Koepke 1984 with linear interpolation to obtain the efficiency factor
-            // The maximum wind speed is chosen to be 38 m/s as to not exceed fractional coverage limits
-            Spectrum efficiency = m_f_eff_base;
-
-            // Here we compute the effective reflectance by looking up the tabulated
-            // values provided by Whitlock et al. 1982
-            Float eff_reflectance = m_eff_reflectance.eval_pdf(m_wavelength->eval(si, active).x(), active);      
-
-            // Compute the whitecap reflectance
-            Spectrum whitecap_reflectance = coverage * efficiency * eff_reflectance;
         
-            // TODO: Multiply by the cosine?
-            // Add the whitecap reflectance to the result
-            result[active] = whitecap_reflectance;
         } 
 
         if (has_glint) {
-            // To compute the solar glint, we need the incoming and outgoing
-            // zenithal angles, the incoming azimuthal angle and the wind direction
-            // which is given by the wind direction texture.
-            Spectrum wind_direction = m_wind_direction->eval(si, active);
-            Float sin_theta_i = Frame3f::sin_theta(si.wi),
-                  sin_theta_o = Frame3f::sin_theta(wo),
-                  cos_phi_i = Frame3f::cos_phi(si.wi);
-
-            // Transform sines and cosine into angles
-            Float theta_i = dr::asin(sin_theta_i),
-                  theta_o = dr::asin(cos_theta_o),
-                  phi_i = dr::acos(cos_phi_i);
-
-            // Using the provided data, we can compute the probability of having
-            // a solar specular reflection using the Cox-Munk distribution.
-            Spectrum specular_prob = m_cox_munk.eval(theta_i, theta_o, phi_i, wind_direction, wind_speed);
         
-            Log(Warn, "Specular probability: %s", specular_prob);
         }
 
         return depolarizer<Spectrum>(result) & active;
@@ -524,17 +459,7 @@ private:
     ref<Texture> m_salinity;
 
     // Fields used to compute whitecap reflectance
-    ScalarFloat m_f_eff_base = 0.4f;
-    ScalarFloat m_monahan_alpha = 2.951f * 1e-6;
-    ScalarFloat m_monahan_lambda = 3.52f;
-    ScalarFloat m_max_wind_speed = 37.241869f;
-
-    // Fields used to compute the sun glint reflectance
-    CoxMunkDistribution<Float, Spectrum> m_cox_munk;
-
-    // Distributions used for
-    //  1. Effective reflectance of whitecaps (Whitlock et al 1982, Koepke 1984)
-    IrregularContinuousDistribution<Float> m_eff_reflectance;
+    OceanUtilities<Float, Spectrum> *m_ocean_utils;
 };
 
 MI_IMPLEMENT_CLASS_VARIANT(OceanicBSDF, BSDF)
