@@ -306,8 +306,25 @@ public:
         return num / den;
     }
 
-    Spectrum eval_underlight() {
-        
+    Spectrum eval_underlight(const Float &wavelength, 
+                             const Spectrum &theta_i, const Spectrum &theta_o,
+                             const Spectrum &phi_i, const Spectrum &phi_o,
+                             const Spectrum &n_real, const Spectrum &n_imag,
+                             const Spectrum &wind_direction, const Spectrum &wind_speed, 
+                             const Spectrum &chlorinity, const Spectrum &pigmentation) {
+        // Analogue to 6SV, we return 0.0 if the wavelength is outside the range of [0.4, 0.7]
+        if (wavelength < 0.4f || wavelength > 0.7f)
+            return 0.0f;
+
+        // Compute r_omega
+        Spectrum r_om = r_omega(wavelength, pigmentation);
+
+        // Upwelling and downwelling transmittance
+        Spectrum t_u = upwelling_transmittance(wavelength, theta_o, phi_o, wind_direction, wind_speed, chlorinity);
+        Spectrum t_d = downwelling_transmittance(wavelength, theta_i, phi_i, wind_direction, wind_speed, chlorinity);
+
+        // Compute the underlight term
+        return (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
     }
 
 private:
@@ -330,16 +347,17 @@ private:
     ScalarFloat m_c_04 = 0.23f;
 
     // Underlight parameters
+    ScalarFloat m_underlight_alpha = 0.485f;
 
     // Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
     Spectrum friedman_sverdrup(const Spectrum &chlorinity) {
         return 0.00017492711f * (0.03f + 1.805f * chlorinity);
     }
 
-    Spectrum underlight_downwelling_transmittance(const Spectrum &wavelength,
-                                                  const Spectrum &theta_i, const Spectrum &phi_i,
-                                                  const Spectrum &wind_direction, const Spectrum &wind_speed, 
-                                                  const Spectrum &chlorinity) {
+    Spectrum downwelling_transmittance(const Float &wavelength,
+                                       const Spectrum &theta_i, const Spectrum &phi_i,
+                                       const Spectrum &wind_direction, const Spectrum &wind_speed, 
+                                       const Spectrum &chlorinity) {
         // Gauss-Lobatto quadrature weights and nodes (preferred since bounds are included)
         std::pair<Float, Float> gs_azimuth  = quad::gauss_lobatto<Float>(48);
         std::pair<Float, Float> gs_zenith   = quad::gauss_lobatto<Float>(24);
@@ -380,6 +398,91 @@ private:
         }
 
         return 1.f - downwelling_opacity / summ;
+    }
+
+    Spectrum upwelling_transmittance(const Float &wavelength,
+                                     const Spectrum &theta_o, const Spectrum &phi_o,
+                                     const Spectrum &wind_direction, const Spectrum &wind_speed, 
+                                     const Spectrum &chlorinity) {
+        // Gauss-Lobatto quadrature weights and nodes (preferred since bounds are included)
+        std::pair<Float, Float> gs_azimuth  = quad::gauss_lobatto<Float>(48);
+        std::pair<Float, Float> gs_zenith   = quad::gauss_lobatto<Float>(24);
+
+        Float azimuth_pts = gs_azimuth.first;
+        Float azimuth_weights = gs_azimuth.second;
+        Float zenith_pts = gs_zenith.first;
+        Float zenith_weights = gs_zenith.second;
+
+        // Transformation of the zenith and azimuthal angles
+        Float transformed_azimuth_pts = (azimuth_pts + 1.0f) * m_pi;
+        Float transformed_zenith_pts = (zenith_pts + 1.0f) * (m_pi_half / 2.0f);
+    
+        // Quadrature
+        Spectrum upwelling_opacity = 0.0f;
+        Spectrum summ = 0.0f;
+        for (int i = 0; i < azimuth_pts; ++i) {
+            for (int j = 0; j < zenith_pts; ++j) {
+                Float phi_d = transformed_azimuth_pts[i];
+                Float theta_d = transformed_zenith_pts[j];
+                Float azimuth_weight = azimuth_weights[i];
+                Float zenith_weight = zenith_weights[j];
+
+                // Cosine/sine of the angles
+                Float c_theta_d = dr::cos(theta_d);
+                Float s_theta_d = dr::sin(theta_d);
+
+                // Compute the reflectance
+                Spectrum reflectance = eval_glint(wavelength, theta_d, theta_o, phi_d, phi_o, 
+                                                  wind_direction, wind_speed, chlorinity);
+
+                // Quadrature step
+                Float weight = azimuth_weight * zenith_weight;
+                Float factor = c_theta_d * s_theta_d * weight;
+                summ += factor;
+                upwelling_opacity += reflectance * factor;
+            }
+        }
+
+        return 1.f - upwelling_opacity / summ;
+    }
+
+    Spectrum r_omega(const Float &wavelength,
+                     const Float &pigmentation) {
+        Float wavelength_nm = wavelength * 1000.0f;
+
+        // Backscattering coefficient
+        Float molecular_scatter_coeff = m_ocean_props.molecular_scatter_coeff(wavelength);
+        Float scattering_coeff = 0.30f * dr::pow(pigmentation, 0.62);
+        Float backscatter_ratio = 0.002f + 0.02f * (0.5f - 0.25f * dr::log(pigmentation)) * (550.0 / wavelength_nm);
+        Float backscatter_coeff = 0.5f * molecular_scatter_coeff + scattering_coeff * backscatter_ratio;
+
+        // (Diffuse) attenuation coefficient
+        Float k = m_ocean_props.attn_k(wavelength);
+        Float chi = m_ocean_props.attn_chi(wavelength);
+        Float e = m_ocean_props.attn_e(wavelength);
+        Float attn_coeff = k + chi * dr::pow(pigmentation, e);
+
+        // Iterative computation of the reflectance
+        Float u = 0.75f;
+        Spectrum r_omega = 0.33f * backscatter_coeff / (u * attn_coeff);
+
+        bool converged = false;
+        while (!converged) {
+            // Update u
+            u = (0.9f * (1.0f - r_omega)) / (1.0f + 2.25f * r_omega);
+
+            // Update reflectance
+            Float r_omega_new = 0.33f * backscatter_coeff / (u * attn_coeff);
+
+            // Update stop criterion
+            if (dr::abs((r_omega_new _ r_omega) / r_omega_new) < 0.001f)
+                converged = true;
+
+            // Update reflectance
+            r_omega = r_omega_new;
+        }
+
+        return r_omega;
     }
 
 };
