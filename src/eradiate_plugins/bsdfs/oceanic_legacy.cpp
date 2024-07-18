@@ -181,74 +181,74 @@ public:
 
     OceanUtilities() : m_ocean_props() { }
 
-    Spectrum eval_whitecap_coverage(const Spectrum &wind_speed) {
+    Float eval_whitecap_coverage(const Float &wind_speed) {
         return m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda);
     }
 
-    Spectrum eval_whitecaps(const Float &wavelength, const Spectrum &wind_speed) {
+    Float eval_whitecaps(const Float &wavelength, const Float &wind_speed) {
         // Compute the fractional coverage of whitecaps
-        Spectrum coverage = eval_whitecap_coverage(wind_speed);
+        Float coverage = eval_whitecap_coverage(wind_speed);
 
         // Compute the efficiency factor
-        Spectrum efficiency = m_f_eff_base;
+        Float efficiency = m_f_eff_base;
 
         // Compute the effective reflectance
         Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
 
         // Compute the whitecap reflectance
-        Spectrum whitecap_reflectance = coverage * efficiency * eff_reflectance;
+        Float whitecap_reflectance = coverage * efficiency * eff_reflectance;
 
         return whitecap_reflectance;
     }
 
-    Spectrum eval_cox_munk(const Spectrum &phi_w, 
-                           const Spectrum &z_x, const Spectrum &z_y,
-                           const Spectrum &wind_speed) const {
-        Spectrum sigma_c = 0.003f + 0.00192f * wind_speed;
-        Spectrum sigma_u = 0.00316f * wind_speed;
+    Float eval_cox_munk(const Float &phi_w, 
+                        const Float &z_x, const Float &z_y,
+                        const Float &wind_speed) const {
+        Float sigma_c = 0.003f + 0.00192f * wind_speed;
+        Float sigma_u = 0.00316f * wind_speed;
 
-        Spectrum c_21 = 0.01f - 0.0086f * wind_speed;
-        Spectrum c_03 = 0.04f - 0.033f * wind_speed;
+        Float c_21 = 0.01f - 0.0086f * wind_speed;
+        Float c_03 = 0.04f - 0.033f * wind_speed;
 
-        Spectrum x_e = (dr::cos(phi_w) * z_x + dr::sin(phi_w) * z_y) / dr::sqrt(sigma_c);
-        Spectrum x_n = (-dr::sin(phi_w) * z_x + dr::cos(phi_w) * z_y) / dr::sqrt(sigma_u);
+        Float xe = (safe_cos(phi_w) * z_x + safe_sin(phi_w) * z_y) / dr::sqrt(sigma_c);
+        Float xn = (-safe_sin(phi_w) * z_x + safe_cos(phi_w) * z_y) / dr::sqrt(sigma_u);
 
-        Spectrum x_e_sqr = x_e * x_e;
-        Spectrum x_n_sqr = x_n * x_n;
-
-        Spectrum coeff = 1.0f - c_21 / 2.0f * (x_e_sqr - 1.0f) * x_n - c_03 / 6.0f * (x_n_sqr - 3.0f) * x_n;
-        coeff = coeff + m_c_40 / 24.0f * (x_e_sqr * x_e_sqr - 6.0f * x_e_sqr + 3.0f);
-        coeff = coeff + m_c_04 / 24.0f * (x_n_sqr * x_n_sqr - 6.0f * x_n_sqr + 3.0f);
-        coeff = coeff + m_c_22 / 4.0f * (x_e_sqr - 1.0f) * (x_n_sqr - 1.0f);
-
-        Spectrum probability = coeff / (2.0f * m_pi * dr::sqrt(sigma_u) * dr::sqrt(sigma_c)) * dr::exp(-(x_e_sqr + x_e_sqr) / 2.0f);
+        Float xe2 = xe * xe;
+        Float xn2 = xn * xn;
         
-        return probability;
+        Float coef = 1.0f - (c_21 / 2.0f) * (xe2 - 1.0f) * xn - (c_03 / 6.0f) * (xn2 - 3.0f) * xn;
+        coef = coef + (m_c_40 / 24.0f) * (xe2 * xe2 - 6.0f * xe2 + 3.0f);
+        coef = coef + (m_c_04 / 24.0f) * (xn2 * xn2 - 6.0f * xn2 + 3.0f);
+        coef = coef + (m_c_22 / 4.0f) * (xe2 - 1.0f) * (xn2 - 1.0f);
+        
+        Float prob = coef / 2.0f / dr::Pi<Float> / dr::sqrt(sigma_u) / dr::sqrt(sigma_c) * dr::exp(-(xe2 + xn2) / 2.0f);
+        return prob;
     }
 
-    Spectrum eval_fresnel(const Spectrum &n_real, const Spectrum &n_imag,
-                          const Spectrum &coschi, const Spectrum &sinchi) const {
-        Spectrum s = n_real * n_real - n_imag * n_imag - sinchi * sinchi;
+    Float eval_fresnel(const Float &n_real, const Float &n_imag,
+                       const Float &coschi, const Float &sinchi) const {
+        Float s = n_real * n_real - n_imag * n_imag - sinchi * sinchi;
         
-        Spectrum a_1 = dr::abs(s);
-        Spectrum a_2 = dr::sqrt(dr::sqr(s) + 4.0f * n_real * n_real * n_imag * n_imag);
+        Float a_1 = dr::abs(s);
+        Float a_2 = dr::sqrt(dr::sqr(s) + 4.0f * n_real * n_real * n_imag * n_imag);
 
-        Spectrum u = dr::sqrt(0.5f * dr::abs(a_1 + a_2));
-        Spectrum v = dr::sqrt(0.5f * dr::abs(a_2 - a_1));
+        Float u = dr::sqrt(0.5f * dr::abs(a_1 + a_2));
+        Float v = dr::sqrt(0.5f * dr::abs(a_2 - a_1));
 
-        Spectrum b_1 = (n_real * n_real - n_imag * n_imag) * coschi;
-        Spectrum b_2 = 2 * n_real * n_imag * coschi;
+        Float b_1 = (n_real * n_real - n_imag * n_imag) * coschi;
+        Float b_2 = 2 * n_real * n_imag * coschi;
 
-        Spectrum right_squared = (dr::sqr(coschi - u) + v * v) / (dr::sqr(coschi + u) + v * v);
-        Spectrum left_squared = (dr::sqr(b_1 - u) + dr::sqr(b_2 + v)) / (dr::sqr(b_1 + u) + dr::sqr(b_2 - v));
-        Spectrum R = (right_squared + left_squared) / 2.0f;
+        Float right_squared = (dr::sqr(coschi - u) + v * v) / (dr::sqr(coschi + u) + v * v);
+        Float left_squared = (dr::sqr(b_1 - u) + dr::sqr(b_2 + v)) / (dr::sqr(b_1 + u) + dr::sqr(b_2 - v));
+        Float R = (right_squared + left_squared) / 2.0f;
 
         return R;
     }
 
-    Spectrum eval_glint(const Spectrum &wavelength, const Float &wi, const Float &wo, 
-                        const Spectrum &wind_direction, const Spectrum &wind_speed,
-                        const Spectrum &chlorinity) {
+    Float eval_glint(const Float &wavelength, 
+                     const Vector3f &wi, const Vector3f &wo, 
+                     const Float &wind_direction, const Float &wind_speed,
+                     const Float &chlorinity) {
         // Transform directions into azimuthal and zenithal angles
         Float theta_i = dr::acos(wi.z());
         Float theta_o = dr::acos(wo.z());
@@ -258,56 +258,79 @@ public:
         return eval_glint(wavelength, theta_i, theta_o, phi_i, phi_o, wind_direction, wind_speed, chlorinity);
     }
 
-    Spectrum eval_glint(const Spectrum &wavelength, 
-                        const Spectrum &theta_i, const Spectrum &theta_o,
-                        const Spectrum &phi_i, const Spectrum &phi_o,
-                        const Spectrum &wind_direction, const Spectrum &wind_speed,
-                        const Spectrum &chlorinity) {
+    Float eval_glint(const Float &wavelength, 
+                        const Float &theta_i, const Float &theta_o,
+                        const Float &phi_i, const Float &phi_o,
+                        const Float &wind_direction, const Float &wind_speed,
+                        const Float &chlorinity) {
         // Implementation analog to 6SV
-        Spectrum phi = phi_i - phi_o;
-        Spectrum phi_w = phi_i - wind_direction;
+        Float phi = phi_i - phi_o;
+        Float phi_w = phi_i - wind_direction;
 
-        Spectrum c_i = dr::cos(theta_i);
-        Spectrum c_o = dr::cos(m_pi_half - theta_o);
-        Spectrum s_i = dr::sin(theta_i);
-        Spectrum s_o = dr::sin(m_pi_half - theta_o);
+        // TODO: Make sure to only consider angles between ]0, pi/2[
+        Float c_i = safe_cos(theta_i);
+        Float c_o = safe_cos(m_pi_half - theta_o);
+        Float s_i = safe_sin(theta_i);
+        Float s_o = safe_sin(m_pi_half - theta_o);
 
-        Spectrum z_x = -s_o * dr::sin(phi) / (c_i + c_o);
-        Spectrum z_y = (s_i + s_o * dr::cos(phi)) / (c_i + c_o);
+        Float z_x = -s_o * safe_sin(phi) / (c_i + c_o);
+        Float z_y = (s_i + s_o * safe_cos(phi)) / (c_i + c_o);
 
         // Tilt angle (rad)
-        Spectrum tan_tilt = dr::sqrt(z_x * z_x + z_y * z_y);
-        Spectrum tilt = dr::atan(tan_tilt);
+        Float tan_tilt = dr::sqrt(z_x * z_x + z_y * z_y);
+        Float tilt = dr::atan(tan_tilt);
 
         // Cox-Munk specular probability
-        Spectrum specular_prob = eval_cox_munk(phi_w, z_x, z_y, wind_speed);
+        Float specular_prob = eval_cox_munk(phi_w, z_x, z_y, wind_speed);
+        auto mask = Mask(specular_prob < 0.0f);
+        specular_prob = dr::select(mask, 0.0f, specular_prob);
 
-        Spectrum cos_2_chi = c_o * c_i + s_o * s_i * dr::cos(phi);
-        if (cos_2_chi > 1.0f)
-            cos_2_chi = 0.999999999f;
-        else if (cos_2_chi < -1.0f)
-            cos_2_chi = -0.999999999f;
-        Spectrum coschi = dr::sqrt(0.5f * (1.0f + cos_2_chi));
-        Spectrum sinchi = dr::sqrt(0.5f * (1.0f - cos_2_chi));
-        if (coschi > 1.0f)
-            coschi = 0.999999999f;
-        else if (coschi < -1.0f)
-            coschi = -0.999999999f;
-        if (sinchi > 1.0f)
-            sinchi = 0.999999999f;
-        else if (sinchi < -1.0f)
-            sinchi = -0.999999999f;
+        Float cos_2_chi = c_o * c_i + s_o * s_i * dr::cos(phi);
+        auto ge_1 = Mask(cos_2_chi > 1.0f);
+        auto le_1 = Mask(cos_2_chi < -1.0f);
+        
+        // Re-factor to account for vectorization
+        // if (cos_2_chi > 1.0f)
+        //     cos_2_chi = 0.999999999f;
+        // else if (cos_2_chi < -1.0f)
+        //     cos_2_chi = -0.999999999f;
+        
+        cos_2_chi = dr::select(ge_1, 0.999999999f, cos_2_chi);
+        cos_2_chi = dr::select(le_1, -0.999999999f, cos_2_chi);
+        
+        Float coschi = dr::sqrt(0.5f * (1.0f + cos_2_chi));
+        Float sinchi = dr::sqrt(0.5f * (1.0f - cos_2_chi));
+
+        auto ge_coschi = Mask(coschi > 1.0f);
+        auto le_coschi = Mask(coschi < -1.0f);
+        auto ge_sinchi = Mask(sinchi > 1.0f);
+        auto le_sinchi = Mask(sinchi < -1.0f);
+
+        // Re-factor to account for vectorization
+        // if (coschi > 1.0f)
+        //     coschi = 0.999999999f;
+        // else if (coschi < -1.0f)
+        //     coschi = -0.999999999f;
+        // if (sinchi > 1.0f)
+        //     sinchi = 0.999999999f;
+        // else if (sinchi < -1.0f)
+        //     sinchi = -0.999999999f;
+
+        coschi = dr::select(ge_coschi, 0.999999999f, coschi);
+        coschi = dr::select(le_coschi, -0.999999999f, coschi);
+        sinchi = dr::select(ge_sinchi, 0.999999999f, sinchi);
+        sinchi = dr::select(le_sinchi, -0.999999999f, sinchi);
 
         // Fresnel coefficient
-        Spectrum n_real = m_ocean_props.ior_real(wavelength) + friedman_sverdrup(chlorinity);
-        Spectrum n_imag = m_ocean_props.ior_cplx(wavelength);
-        Spectrum fresnel_coeff = eval_fresnel(n_real, n_imag, coschi, sinchi);
+        Float n_real = m_ocean_props.ior_real(wavelength) + friedman_sverdrup(chlorinity);
+        Float n_imag = m_ocean_props.ior_cplx(wavelength);
+        Float fresnel_coeff = eval_fresnel(n_real, n_imag, coschi, sinchi);
         
         // Compute reflectance
-        Spectrum num = m_pi * specular_prob * fresnel_coeff;
-        Spectrum den = 4.0f * c_i * c_o * dr::pow(dr::cos(tilt), 4.0f);
+        Float num = m_pi * specular_prob * fresnel_coeff;
+        Float denom = 4.0f * c_i * c_o * dr::pow(dr::cos(tilt), 4.0f);
 
-        return num / den;
+        return num;
     }
 
     Spectrum eval_underlight(const Float &wavelength, 
@@ -336,14 +359,16 @@ private:
     OceanProperties<Float, Spectrum> m_ocean_props;
 
     // Simple constants
-    Spectrum m_pi = dr::Pi<Float>;
-    Spectrum m_pi_half = m_pi / 2.0f;
+    ScalarFloat m_pi = dr::Pi<ScalarFloat>;
+    ScalarFloat m_pi_half = m_pi / 2.0f;
+    ScalarFloat m_pi_three_half = (3.0f * m_pi) / 2.0f;
+    ScalarFloat m_trig_eps_cos = 0.01745154894888401f;
+    ScalarFloat m_trig_eps_sin = 0.01745154894888401f;
 
     // Whitecap parameters
     ScalarFloat m_f_eff_base = 0.4f;
     ScalarFloat m_monahan_alpha = 2.951f * 1e-6;
     ScalarFloat m_monahan_lambda = 3.52f;
-    ScalarFloat m_max_wind_speed = 37.241869f;
 
     // Cox-Munk distribution parameters
     ScalarFloat m_c_40 = 0.40f;
@@ -353,8 +378,40 @@ private:
     // Underlight parameters
     ScalarFloat m_underlight_alpha = 0.485f;
 
+    // "Safe" version of the cosine function
+    Float safe_cos(const Float &angle) const {
+        // Fix less-than-zero angles
+        auto test = Mask(angle < 0.0f);
+        Float corrected_angle = dr::select(test, angle + 2.0f * m_pi, angle);
+
+        // TODO: Angles > 2pi
+        Float angle_cos = dr::cos(corrected_angle);
+
+        // Vectorized Clamp
+        auto mask = Mask(corrected_angle > m_pi_half && corrected_angle < m_pi_three_half);
+        return dr::select(mask, 
+            dr::clamp(angle_cos, -1.0f, -m_trig_eps_cos), 
+            dr::clamp(angle_cos, m_trig_eps_cos, 1.0f));
+    }
+
+    // "Safe" version of the sine function
+    Float safe_sin(const Float &angle) const {
+        // Fix less-than-zero angles
+        auto test = Mask(angle < 0.0f);
+        Float corrected_angle = dr::select(test, angle + 2.0f * m_pi, angle);
+
+        // TODO: Angles > 2pi
+        Float angle_sine = dr::sin(corrected_angle);
+
+        // Vectorized Clamp
+        auto mask = Mask(corrected_angle > m_pi);
+        return dr::select(mask, 
+            dr::clamp(angle_sine, -1.0f, -m_trig_eps_sin),
+            dr::clamp(angle_sine, m_trig_eps_sin, 1.0f));
+    }
+
     // Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
-    Spectrum friedman_sverdrup(const Spectrum &chlorinity) {
+    Float friedman_sverdrup(const Float &chlorinity) {
         return 0.00017492711f * (0.03f + 1.805f * chlorinity);
     }
 
@@ -549,7 +606,7 @@ public:
                   const Vector3f &wo, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
-        Log(Warn, "Evaluating OceanicBSDF");
+        //Log(Warn, "Evaluating OceanicBSDF");
 
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
@@ -557,9 +614,9 @@ public:
         if (unlikely(dr::none_or<false>(active) || !has_whitecap))
             return 0.f;
 
-        Log(Warn, "Whitecap: %s", has_whitecap ? "true" : "false");
-        Log(Warn, "Glint: %s", has_glint ? "true" : "false");
-        Log(Warn, "Underlight: %s", has_underlight ? "true" : "false");
+        //Log(Warn, "Whitecap: %s", has_whitecap ? "true" : "false");
+        //Log(Warn, "Glint: %s", has_glint ? "true" : "false");
+        //Log(Warn, "Underlight: %s", has_underlight ? "true" : "false");
 
         Float cos_theta_i = Frame3f::cos_theta(si.wi),
               cos_theta_o = Frame3f::cos_theta(wo);
@@ -569,27 +626,39 @@ public:
 
         // Compute the whitecap reflectance
         UnpolarizedSpectrum result(0.f);
-        UnpolarizedSpectrum whitecaps(0.f);
+        UnpolarizedSpectrum whitecap_reflectance(0.f);
+        UnpolarizedSpectrum glint_reflectance(0.f);
+        UnpolarizedSpectrum underlight_reflectance(0.f);
         
         // Get the reflected directions
         auto is_reflect = Mask(dr::eq(dr::sign(cos_theta_i), dr::sign(cos_theta_o))) && active;
 
         if (has_whitecap) {
             // If whitecaps are enabled, compute the whitecap reflectance 
-            //whitecaps[is_reflect] = m_ocean_utils->eval_whitecaps(m_wavelength->eval(si), m_wind_speed->eval(si));
+            whitecap_reflectance = m_ocean_utils->eval_whitecaps(m_wavelength, m_wind_speed);
         } 
 
         if (has_glint) {
-        
+            // If sun glint is enabled, compute the glint reflectance
+            glint_reflectance = m_ocean_utils->eval_glint(m_wavelength, si.wi, wo, m_wind_direction, m_wind_speed, m_chlorinity);
         }
 
         if (has_underlight) {
         }
 
         // Combine the results
-        Spectrum coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed->eval(si));
+        Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
 
-        result = whitecaps * coverage;
+        //Log(Warn, "Coverage: %f", coverage);
+        //Log(Warn, "Coverage Complement: %f", (1.0f - coverage));
+        //Log(Warn, "Whitecap Reflectance: %f", whitecap_reflectance);
+        //Log(Warn, "Glint Reflectance: %f", glint_reflectance);
+
+        result[is_reflect] = glint_reflectance;
+
+        //result[is_reflect] = (coverage * whitecap_reflectance) + (1 - coverage) * glint_reflectance;
+
+        //Log(Warn, "Result: %s", result);
 
         return depolarizer<Spectrum>(result) & active;
     }
