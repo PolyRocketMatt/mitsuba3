@@ -508,13 +508,19 @@ public:
         // Set the BSDF flags
         // => Whitecap reflectance is "diffuse"
         m_components.push_back(BSDFFlags::DiffuseReflection | 
-                               BSDFFlags::FrontSide | BSDFFlags::BackSide);
+                               BSDFFlags::FrontSide);
     
-        // => Sun glint reflectance at the water surface
+        // => Sun glint reflectance at the water surface is "specular"
         m_components.push_back(BSDFFlags::GlossyReflection | 
                                BSDFFlags::FrontSide | BSDFFlags::BackSide);
 
-        m_flags = m_components[0];
+        // => Underlight reflectance is "diffuse" but transmissive
+        m_components.push_back(BSDFFlags::DiffuseTransmission | 
+                               BSDFFlags::FrontSide | BSDFFlags::BackSide);
+
+        // Set all the flags
+        for (auto c : m_components)
+            m_flags |= c;
         dr::set_attr(this, "flags", m_flags);
     }
 
