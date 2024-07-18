@@ -181,15 +181,19 @@ public:
 
     OceanUtilities() : m_ocean_props() { }
 
-    Spectrum eval_whitecaps(const Spectrum &wavelength, const Spectrum &wind_speed) {
+    Spectrum eval_whitecap_coverage(const Spectrum &wind_speed) {
+        return m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda);
+    }
+
+    Spectrum eval_whitecaps(const Float &wavelength, const Spectrum &wind_speed) {
         // Compute the fractional coverage of whitecaps
-        Spectrum coverage = m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda);
+        Spectrum coverage = eval_whitecap_coverage(wind_speed);
 
         // Compute the efficiency factor
         Spectrum efficiency = m_f_eff_base;
 
         // Compute the effective reflectance
-        Spectrum eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
+        Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
 
         // Compute the whitecap reflectance
         Spectrum whitecap_reflectance = coverage * efficiency * eff_reflectance;
@@ -497,10 +501,10 @@ public:
 
     OceanicBSDF(const Properties &props) : Base(props) {
         // Retrieve the parameters used in 6SV
-        m_wavelength = props.texture<Texture>("wavelength");
-        m_wind_speed = props.texture<Texture>("wind_speed");
-        m_wind_direction = props.texture<Texture>("wind_direction");
-        m_salinity = props.texture<Texture>("salinity");
+        m_wavelength = props.get<ScalarFloat>("wavelength");
+        m_wind_speed = props.get<ScalarFloat>("wind_speed");
+        m_wind_direction = props.get<ScalarFloat>("wind_direction");
+        m_chlorinity = props.get<ScalarFloat>("chlorinity");
 
         // Initialize the ocean utilities
         m_ocean_utils = new OceanUtilities<Float, Spectrum>();
@@ -549,8 +553,13 @@ public:
 
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
+        bool has_underlight = ctx.is_enabled(BSDFFlags::DiffuseTransmission, 2);
         if (unlikely(dr::none_or<false>(active) || !has_whitecap))
             return 0.f;
+
+        Log(Warn, "Whitecap: %s", has_whitecap ? "true" : "false");
+        Log(Warn, "Glint: %s", has_glint ? "true" : "false");
+        Log(Warn, "Underlight: %s", has_underlight ? "true" : "false");
 
         Float cos_theta_i = Frame3f::cos_theta(si.wi),
               cos_theta_o = Frame3f::cos_theta(wo);
@@ -560,15 +569,27 @@ public:
 
         // Compute the whitecap reflectance
         UnpolarizedSpectrum result(0.f);
+        UnpolarizedSpectrum whitecaps(0.f);
         
+        // Get the reflected directions
+        auto is_reflect = Mask(dr::eq(dr::sign(cos_theta_i), dr::sign(cos_theta_o))) && active;
 
         if (has_whitecap) {
-        
+            // If whitecaps are enabled, compute the whitecap reflectance 
+            //whitecaps[is_reflect] = m_ocean_utils->eval_whitecaps(m_wavelength->eval(si), m_wind_speed->eval(si));
         } 
 
         if (has_glint) {
         
         }
+
+        if (has_underlight) {
+        }
+
+        // Combine the results
+        Spectrum coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed->eval(si));
+
+        result = whitecaps * coverage;
 
         return depolarizer<Spectrum>(result) & active;
     }
@@ -588,8 +609,8 @@ public:
         oss << "OceanicLegacy[" << std::endl
             << "  wavelength = " << string::indent(m_wavelength) << std::endl
             << "  wind_speed = " << string::indent(m_wind_speed) << std::endl
-            << "  m_wind_direction = " << string::indent(m_wind_direction) << std::endl
-            << "  salinity = " << string::indent(m_salinity) << std::endl
+            << "  wind_direction = " << string::indent(m_wind_direction) << std::endl
+            << "  chlorinity = " << string::indent(m_chlorinity) << std::endl
             << "]";
         return oss.str();
     }
@@ -597,10 +618,10 @@ public:
     MI_DECLARE_CLASS()
 private:
     // User-provided fields
-    ref<Texture> m_wavelength;
-    ref<Texture> m_wind_speed;
-    ref<Texture> m_wind_direction;
-    ref<Texture> m_salinity;
+    ScalarFloat m_wavelength;
+    ScalarFloat m_wind_speed;
+    ScalarFloat m_wind_direction;
+    ScalarFloat m_chlorinity;
 
     // Fields used to compute whitecap reflectance
     OceanUtilities<Float, Spectrum> *m_ocean_utils;
