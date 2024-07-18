@@ -475,7 +475,7 @@ private:
             Float r_omega_new = 0.33f * backscatter_coeff / (u * attn_coeff);
 
             // Update stop criterion
-            if (dr::abs((r_omega_new _ r_omega) / r_omega_new) < 0.001f)
+            if (dr::abs((r_omega_new - r_omega) / r_omega_new) < 0.001f)
                 converged = true;
 
             // Update reflectance
