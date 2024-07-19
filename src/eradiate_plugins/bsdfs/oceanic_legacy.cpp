@@ -289,12 +289,6 @@ public:
         auto ge_1 = Mask(cos_2_chi > 1.0f);
         auto le_1 = Mask(cos_2_chi < -1.0f);
         
-        // Re-factor to account for vectorization
-        // if (cos_2_chi > 1.0f)
-        //     cos_2_chi = 0.999999999f;
-        // else if (cos_2_chi < -1.0f)
-        //     cos_2_chi = -0.999999999f;
-        
         cos_2_chi = dr::select(ge_1, 0.999999999f, cos_2_chi);
         cos_2_chi = dr::select(le_1, -0.999999999f, cos_2_chi);
         
@@ -305,16 +299,6 @@ public:
         auto le_coschi = Mask(coschi < -1.0f);
         auto ge_sinchi = Mask(sinchi > 1.0f);
         auto le_sinchi = Mask(sinchi < -1.0f);
-
-        // Re-factor to account for vectorization
-        // if (coschi > 1.0f)
-        //     coschi = 0.999999999f;
-        // else if (coschi < -1.0f)
-        //     coschi = -0.999999999f;
-        // if (sinchi > 1.0f)
-        //     sinchi = 0.999999999f;
-        // else if (sinchi < -1.0f)
-        //     sinchi = -0.999999999f;
 
         coschi = dr::select(ge_coschi, 0.999999999f, coschi);
         coschi = dr::select(le_coschi, -0.999999999f, coschi);
