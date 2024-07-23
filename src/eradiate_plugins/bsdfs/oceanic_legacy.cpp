@@ -1,6 +1,7 @@
 #include <mitsuba/core/distr_1d.h>
 #include <mitsuba/core/properties.h>
 #include <mitsuba/core/quad.h>
+#include <mitsuba/core/random.h>
 #include <mitsuba/core/spectrum.h>
 #include <mitsuba/core/warp.h>
 #include <mitsuba/render/bsdf.h>
@@ -732,33 +733,85 @@ public:
         dr::set_attr(this, "flags", m_flags);
     }
 
-    Spectrum eval_whitecaps() const {
+    Float eval_whitecaps() const {
         return m_ocean_utils->eval_whitecaps(m_wavelength, m_wind_speed);
     }
 
-    Spectrum eval_glint(const Vector3f &wi, const Vector3f &wo) const {
+    Float eval_glint(const Vector3f &wi, const Vector3f &wo) const {
         return m_ocean_utils->eval_glint(m_wavelength, wi, wo, m_wind_direction, m_wind_speed, m_chlorinity);
     }
 
-    Spectrum eval_underlight(const Vector3f &wi, const Vector3f &wo) const {
+    Float eval_underlight(const Vector3f &wi, const Vector3f &wo) const {
         return m_ocean_utils->eval_underlight(m_wavelength, wi, wo, m_wind_direction, m_wind_speed, m_chlorinity, m_pigmentation);
+    }
+
+    Float eval_ocean(const Vector3f &wi, const Vector3f &wo) {
+        Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
+        Float whitecap_reflectance = eval_whitecaps();
+        Float glint_reflectance = eval_glint(wi, wo);
+        Float underlight_reflectance = eval_underlight(wi, wo);
+
+        return (coverage * whitecap_reflectance) 
+            + (1 - coverage) * glint_reflectance
+            + (1 - (coverage * whitecap_reflectance)) * underlight_reflectance;
     }
 
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx, const SurfaceInteraction3f &si,
            Float sample1, const Point2f &sample2, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
-        // Test
-        UnpolarizedSpectrum value(0.f);
+        bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
+        bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
+        bool has_underlight = ctx.is_enabled(BSDFFlags::DiffuseTransmission, 2);
+        if (unlikely(dr::none_or<false>(active) || !has_whitecap))
+            return { dr::zeros<BSDFSample3f>(), UnpolarizedSpectrum(0.f) };
+
+        Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        Vector3f wo = warp::square_to_cosine_hemisphere(sample2);
+
+        UnpolarizedSpectrum result(0.f);
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
 
-        bs.pdf = dr::select(active, warp::square_to_cosine_hemisphere_pdf(si.wi), 0.f);
+        Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
+        Float glint = std::rand() / (Float) RAND_MAX;
+
+        // Based on the coverage, we choose to sample either the whitecaps or the sun glint / underlight
+        Float prob_whitecap = coverage,
+              prob_glint = (1 - coverage) * glint,
+              prob_underlight = (1 - coverage) * (1.0f - glint);
+
+        // TODO: What if one of lobes disabled?
+
+        Mask sample_whitecap = active && (sample1 < prob_whitecap),
+             sample_glint = active && (sample1 >= prob_whitecap && sample1 < prob_whitecap + prob_glint),
+             sample_underlight = active && (sample1 >= prob_whitecap + prob_glint);
+
+        if (dr::any_or<true>(sample_whitecap)) {
+            dr::masked(bs.wo, sample_whitecap) = wo;
+            dr::masked(bs.pdf, sample_whitecap) = warp::square_to_cosine_hemisphere_pdf(wo);
+            dr::masked(bs.sampled_component, sample_whitecap) = 0;
+            dr::masked(bs.sampled_type, sample_whitecap) = +BSDFFlags::DiffuseReflection; 
+        }
+
+        if (dr::any_or<true>(sample_glint)) {
+            dr::masked(bs.wo, sample_glint) = wo;
+            dr::masked(bs.pdf, sample_glint) = warp::square_to_cosine_hemisphere_pdf(wo);
+            dr::masked(bs.sampled_component, sample_glint) = 1;
+            dr::masked(bs.sampled_type, sample_glint) = +BSDFFlags::GlossyReflection;
+        }
+
+        if (dr::any_or<true>(sample_underlight)) {
+            dr::masked(bs.wo, sample_underlight) = wo;
+            dr::masked(bs.pdf, sample_underlight) = warp::square_to_cosine_hemisphere_pdf(wo);
+            dr::masked(bs.sampled_component, sample_underlight) = 2;
+            dr::masked(bs.sampled_type, sample_underlight) = +BSDFFlags::DiffuseTransmission;
+        }
+
         bs.eta = 1.f;
-        bs.sampled_component = dr::select(active, UInt32(0), UInt32(0));
-        bs.sampled_type = dr::select(active, UInt32(+BSDFFlags::DiffuseReflection), 
-                                             UInt32(+BSDFFlags::DiffuseReflection));
-    
-        return { bs, value };
+        active &= bs.pdf > 0.f;
+        result = eval_ocean(si.wi, wo);
+
+        return { bs, depolarizer<Spectrum>(result) & active };
     }
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
