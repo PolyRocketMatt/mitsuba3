@@ -201,6 +201,8 @@ public:
         // Compute the effective reflectance
         Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
 
+        Log(Warn, "Effective Reflectance: %f", eff_reflectance);
+
         // Compute the whitecap reflectance
         Float whitecap_reflectance = coverage * efficiency * eff_reflectance;
 
@@ -233,7 +235,7 @@ public:
 
     Float eval_fresnel(const Float &n_real, const Float &n_imag,
                        const Float &coschi, const Float &sinchi) const {
-        Float s = n_real * n_real - n_imag * n_imag - sinchi * sinchi;
+        Float s = (n_real * n_real) - (n_imag * n_imag) - (sinchi * sinchi);
         
         Float a_1 = dr::abs(s);
         Float a_2 = dr::sqrt(dr::sqr(s) + 4.0f * n_real * n_real * n_imag * n_imag);
@@ -246,7 +248,7 @@ public:
 
         Float right_squared = (dr::sqr(coschi - u) + v * v) / (dr::sqr(coschi + u) + v * v);
         Float left_squared = (dr::sqr(b_1 - u) + dr::sqr(b_2 + v)) / (dr::sqr(b_1 + u) + dr::sqr(b_2 - v));
-        Float R = (right_squared + left_squared) / 2.0f;
+        Float R = (right_squared + left_squared) * 0.5f;
 
         return R;
     }
@@ -265,21 +267,21 @@ public:
     }
 
     Float eval_glint_internal(const Float &wavelength, 
-                     const Float &theta_i, const Float &theta_o,
-                     const Float &phi_i, const Float &phi_o,
-                     const Float &wind_direction, const Float &wind_speed,
-                     const Float &chlorinity) {
+                              const Float &theta_i, const Float &theta_o,
+                              const Float &phi_i, const Float &phi_o,
+                              const Float &wind_direction, const Float &wind_speed,
+                              const Float &chlorinity) {
         // Implementation analog to 6SV
         Float phi = phi_i - phi_o;
         Float phi_w = phi_i - wind_direction;
 
         // TODO: Make sure to only consider angles between ]0, pi/2[
         Float c_i = safe_cos(theta_i);
-        Float c_o = safe_cos(m_pi_half - theta_o);
+        Float c_o = safe_cos(theta_o);
         Float s_i = safe_sin(theta_i);
-        Float s_o = safe_sin(m_pi_half - theta_o);
+        Float s_o = safe_sin(theta_o);
 
-        Float z_x = -s_o * safe_sin(phi) / (c_i + c_o);
+        Float z_x = (-s_o * safe_sin(phi)) / (c_i + c_o);
         Float z_y = (s_i + s_o * safe_cos(phi)) / (c_i + c_o);
 
         // Tilt angle (rad)
@@ -317,8 +319,8 @@ public:
         Float fresnel_coeff = eval_fresnel(n_real, n_imag, coschi, sinchi);
         
         // Compute reflectance
-        Float num = m_pi * specular_prob * fresnel_coeff;
-        Float denom = 4.0f * c_i * c_o * dr::pow(dr::cos(tilt), 4.0f);
+        Float num = m_pi * fresnel_coeff * specular_prob;
+        Float denom = 4.0f * c_i * c_o * dr::pow(safe_cos(tilt), 4.0f);
 
         return num / denom;
     }
@@ -355,9 +357,9 @@ public:
         Float t_u = upwelling_transmittance_fast(theta_o);
         Float t_d = downwelling_transmittance_fast(theta_i);
 
-        Log(Warn, "R_Omega: %f", r_om);
-        Log(Warn, "T_U: %f", t_u);
-        Log(Warn, "T_D: %f", t_d);
+        //Log(Warn, "R_Omega: %f", r_om);
+        //Log(Warn, "T_U: %f", t_u);
+        //Log(Warn, "T_D: %f", t_d);
 
         // Compute the underlight term
         Float underlight = (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
@@ -378,7 +380,7 @@ private:
 
     // Whitecap parameters
     ScalarFloat m_f_eff_base = 0.4f;
-    ScalarFloat m_monahan_alpha = 2.951f * 1e-6;
+    ScalarFloat m_monahan_alpha = 2.951e-6f;
     ScalarFloat m_monahan_lambda = 3.52f;
 
     // Cox-Munk distribution parameters
@@ -777,8 +779,7 @@ public:
 
         // Based on the coverage, we choose to sample either the whitecaps or the sun glint / underlight
         Float prob_whitecap = coverage,
-              prob_glint = (1 - coverage) * glint,
-              prob_underlight = (1 - coverage) * (1.0f - glint);
+              prob_glint = (1 - coverage) * glint;
 
         // TODO: What if one of lobes disabled?
 
@@ -811,7 +812,7 @@ public:
         active &= bs.pdf > 0.f;
         result = eval_ocean(si.wi, wo);
 
-        return { bs, depolarizer<Spectrum>(result) & active };
+        return { bs, (depolarizer<Spectrum>(result) / bs.pdf) & active };
     }
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
