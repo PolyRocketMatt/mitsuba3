@@ -745,7 +745,7 @@ public:
         return m_ocean_utils->eval_underlight(m_wavelength, wi, wo, m_wind_direction, m_wind_speed, m_chlorinity, m_pigmentation);
     }
 
-    Float eval_ocean(const Vector3f &wi, const Vector3f &wo) {
+    Float eval_ocean(const Vector3f &wi, const Vector3f &wo) const {
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
         Float whitecap_reflectance = eval_whitecaps();
         Float glint_reflectance = eval_glint(wi, wo);
@@ -788,21 +788,21 @@ public:
 
         if (dr::any_or<true>(sample_whitecap)) {
             dr::masked(bs.wo, sample_whitecap) = wo;
-            dr::masked(bs.pdf, sample_whitecap) = warp::square_to_cosine_hemisphere_pdf(wo);
+            dr::masked(bs.pdf, sample_whitecap) = pdf(ctx, si, wo, sample_whitecap);
             dr::masked(bs.sampled_component, sample_whitecap) = 0;
             dr::masked(bs.sampled_type, sample_whitecap) = +BSDFFlags::DiffuseReflection; 
         }
 
         if (dr::any_or<true>(sample_glint)) {
             dr::masked(bs.wo, sample_glint) = wo;
-            dr::masked(bs.pdf, sample_glint) = warp::square_to_cosine_hemisphere_pdf(wo);
+            dr::masked(bs.pdf, sample_glint) = pdf(ctx, si, wo, sample_glint);
             dr::masked(bs.sampled_component, sample_glint) = 1;
             dr::masked(bs.sampled_type, sample_glint) = +BSDFFlags::GlossyReflection;
         }
 
         if (dr::any_or<true>(sample_underlight)) {
             dr::masked(bs.wo, sample_underlight) = wo;
-            dr::masked(bs.pdf, sample_underlight) = warp::square_to_cosine_hemisphere_pdf(wo);
+            dr::masked(bs.pdf, sample_underlight) = pdf(ctx, si, wo, sample_underlight);
             dr::masked(bs.sampled_component, sample_underlight) = 2;
             dr::masked(bs.sampled_type, sample_underlight) = +BSDFFlags::DiffuseTransmission;
         }
