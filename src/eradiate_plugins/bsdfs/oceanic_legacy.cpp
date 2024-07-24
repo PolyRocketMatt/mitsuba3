@@ -10,8 +10,6 @@
 
 NAMESPACE_BEGIN(mitsuba)
 
-//using FloatX = dr::DynamicArray<float>;
-
 // Header content - Potentially move somewhere else later
 #ifndef OCEAN_PROPS
 #define OCEAN_PROPS
@@ -105,6 +103,20 @@ public:
                                                                 0.00061159, 0.00059127, 0.00057095, 0.00055063, 0.00053524, 
                                                                 0.00052 };
 
+        std::vector<ScalarFloat> molecular_scatter_coeffs_6s = {    0.0076, 0.0072, 0.0068, 0.0064, 0.0061,
+                                                                    0.0058, 0.0055, 0.0052, 0.0049, 0.0047,
+                                                                    0.0045, 0.0043, 0.0041, 0.0039, 0.0037,
+                                                                    0.0036, 0.0034, 0.0033, 0.0031, 0.0030,
+                                                                    0.0029, 0.0027, 0.0026, 0.0025, 0.0024,
+                                                                    0.0023, 0.0022, 0.0022, 0.0021, 0.0020,
+                                                                    0.0019, 0.0018, 0.0018, 0.0017, 0.0017,
+                                                                    0.0016, 0.0016, 0.0015, 0.0015, 0.0014,
+                                                                    0.0014, 0.0013, 0.0013, 0.0012, 0.0012,
+                                                                    0.0011, 0.0011, 0.0010, 0.0010, 0.0010,
+                                                                    0.0010, 0.0009, 0.0008, 0.0008, 0.0008,
+                                                                    0.0007, 0.0007, 0.0007, 0.0007, 0.0007,
+                                                                    0.0007 };
+
         // Construct distributions from the provided data sets
         m_effective_reflectance = IrregularContinuousDistribution<Float>(
             wc_wavelengths.data(), wc_data.data(), wc_data.size()
@@ -132,6 +144,10 @@ public:
 
         m_molecular_scatter_coeffs = IrregularContinuousDistribution<Float>(
             attn_wavelengths.data(), molecular_scatter_coeffs.data(), molecular_scatter_coeffs.size()
+        );
+
+        m_molecular_scatter_coeffs_6s = IrregularContinuousDistribution<Float>(
+            attn_wavelengths.data(), molecular_scatter_coeffs_6s.data(), molecular_scatter_coeffs_6s.size()
         );
     }
 
@@ -163,6 +179,10 @@ public:
         return m_molecular_scatter_coeffs.eval_pdf(wavelength);
     }
 
+    Float molecular_scatter_coeff_6s(const Float &wavelength) const {
+        return m_molecular_scatter_coeffs_6s.eval_pdf(wavelength);
+    }
+
 private:
     // Effective reflectance of whitecaps
     IrregularContinuousDistribution<Float> m_effective_reflectance;
@@ -176,6 +196,7 @@ private:
     IrregularContinuousDistribution<Float> m_attn_chi;
     IrregularContinuousDistribution<Float> m_attn_e;
     IrregularContinuousDistribution<Float> m_molecular_scatter_coeffs;
+    IrregularContinuousDistribution<Float> m_molecular_scatter_coeffs_6s;
 };
 
 template<typename Float, typename Spectrum>
@@ -200,8 +221,6 @@ public:
 
         // Compute the effective reflectance
         Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
-
-        Log(Warn, "Effective Reflectance: %f", eff_reflectance);
 
         // Compute the whitecap reflectance
         Float whitecap_reflectance = coverage * efficiency * eff_reflectance;
@@ -327,7 +346,6 @@ public:
 
     Float eval_underlight(const Float &wavelength, 
                           const Vector3f &wi, const Vector3f &wo,
-                          const Float &wind_direction, const Float &wind_speed, 
                           const Float &chlorinity, const Float &pigmentation) {
         // Transform directions into azimuthal and zenithal angles
         Float theta_i = dr::acos(wi.z());
@@ -335,13 +353,12 @@ public:
         Float phi_i = dr::atan2(wi.y(), wi.x());
         Float phi_o = dr::atan2(wo.y(), wo.x());
 
-        return eval_underlight(wavelength, theta_i, theta_o, phi_i, phi_o, wind_direction, wind_speed, chlorinity, pigmentation);
+        return eval_underlight(wavelength, theta_i, theta_o, phi_i, phi_o, chlorinity, pigmentation);
     }
 
     Float eval_underlight(const Float &wavelength, 
                           const Float &theta_i, const Float &theta_o,
                           const Float &phi_i, const Float &phi_o,
-                          const Float &wind_direction, const Float &wind_speed, 
                           const Float &chlorinity, const Float &pigmentation) {
         // Analogue to 6SV, we return 0.0 if the wavelength is outside the range of [0.4, 0.7]
         auto mask = Mask(wavelength >= 0.4f || wavelength <= 0.7f);
@@ -380,7 +397,7 @@ private:
 
     // Whitecap parameters
     ScalarFloat m_f_eff_base = 0.4f;
-    ScalarFloat m_monahan_alpha = 2.951e-6f;
+    ScalarFloat m_monahan_alpha = 2.951e-06f;
     ScalarFloat m_monahan_lambda = 3.52f;
 
     // Cox-Munk distribution parameters
@@ -432,6 +449,8 @@ private:
 
     // "Safe" version of the cosine function
     Float safe_cos(const Float &angle) const {
+        return dr::cos(angle);
+        /*
         // Fix less-than-zero angles
         auto test = Mask(angle < 0.0f);
         Float corrected_angle = dr::select(test, angle + 2.0f * m_pi, angle);
@@ -444,10 +463,13 @@ private:
         return dr::select(mask, 
             dr::clamp(angle_cos, -1.0f, -m_trig_eps_cos), 
             dr::clamp(angle_cos, m_trig_eps_cos, 1.0f));
+        */
     }
 
     // "Safe" version of the sine function
     Float safe_sin(const Float &angle) const {
+        return dr::sin(angle);
+        /*
         // Fix less-than-zero angles
         auto test = Mask(angle < 0.0f);
         Float corrected_angle = dr::select(test, angle + 2.0f * m_pi, angle);
@@ -460,6 +482,7 @@ private:
         return dr::select(mask, 
             dr::clamp(angle_sine, -1.0f, -m_trig_eps_sin),
             dr::clamp(angle_sine, m_trig_eps_sin, 1.0f));
+        */
     }
 
     // Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
@@ -551,115 +574,15 @@ private:
         return 1.f - upwelling_opacity / sum;
     }
 
-    Float downwelling_transmittance_broken(const Float &wavelength,
-                                    const Float &theta_i, const Float &phi_i,
-                                    const Float &wind_direction, const Float &wind_speed, 
-                                    const Float &chlorinity) {
-        /*
-        // Gauss-Lobatto quadrature weights and nodes (preferred since bounds are included)
-        std::pair<FloatStorage, FloatStorage> gs_azimuth  = quad::gauss_lobatto<FloatStorage>(48);
-        std::pair<FloatStorage, FloatStorage> gs_zenith   = quad::gauss_lobatto<FloatStorage>(24);
-
-        auto azimuth_pts = gs_azimuth.first;
-        auto azimuth_weights = gs_azimuth.second;
-        auto zenith_pts = gs_zenith.first;
-        auto zenith_weights = gs_zenith.second;
-
-        // Transformation of the zenith and azimuthal angles
-        auto transformed_azimuth_pts = (azimuth_pts + 1.0f) * m_pi;
-        auto transformed_zenith_pts = (zenith_pts + 1.0f) * (m_pi_half / 2.0f);
-
-        // (Co)sine of the angles
-        auto c_theta = dr::cos(transformed_zenith_pts);
-        auto s_theta = dr::sin(transformed_zenith_pts);
-
-        // Compute reflectance by gather ops
-        for (auto i = 0; i < 48; i++)
-            for (auto j = 0; j < 24; j++) {
-                UInt32 azimuth_index = i;
-                UInt32 zenith_index = j;
-
-                auto test = dr::gather<Float>(transformed_azimuth_pts, azimuth_index);
-
-                Log(Warn, "Test: %f", test);
-            }
-        */
-
-        /*
-        // Compute reflectance
-        Float reflectance = eval_glint_internal(wavelength, theta_i, transformed_zenith_pts, phi_i, transformed_azimuth_pts,
-                                       wind_direction, wind_speed, chlorinity);
-
-        // Quadrature step
-        Float weights = azimuth_weights * zenith_weights;
-        Float factor = c_theta * s_theta * weights;
-        Float sum = dr::sum(factor);
-        Float downwelling_opacity = reflectance * factor;
-
-        return 1.f - downwelling_opacity / sum;
-        */
-
-        return 1.0f;
-    }
-
-    Float upwelling_transmittance_broken(const Float &wavelength,
-                                  const Float &theta_o, const Float &phi_o,
-                                  const Float &wind_direction, const Float &wind_speed, 
-                                  const Float &chlorinity) {
-        /*
-        // Gauss-Lobatto quadrature weights and nodes (preferred since bounds are included)
-        std::pair<FloatX, FloatX> gs_azimuth  = quad::gauss_lobatto<Float>(48);
-        std::pair<Float, Float> gs_zenith   = quad::gauss_lobatto<Float>(24);
-
-        Float azimuth_pts = gs_azimuth.first;
-        Float azimuth_weights = gs_azimuth.second;
-        Float zenith_pts = gs_zenith.first;
-        Float zenith_weights = gs_zenith.second;
-
-        // Transformation of the zenith and azimuthal angles
-        Float transformed_azimuth_pts = (azimuth_pts + 1.0f) * m_pi;
-        Float transformed_zenith_pts = (zenith_pts + 1.0f) * (m_pi_half / 2.0f);
-    
-        // Quadrature
-        Float upwelling_opacity = 0.0f;
-        Float summ = 0.0f;
-        for (int i = 0; i < azimuth_pts; ++i) {
-            for (int j = 0; j < zenith_pts; ++j) {
-                Float phi_d = transformed_azimuth_pts[i];
-                Float theta_d = transformed_zenith_pts[j];
-                Float azimuth_weight = azimuth_weights[i];
-                Float zenith_weight = zenith_weights[j];
-
-                // Cosine/sine of the angles
-                Float c_theta_d = dr::cos(theta_d);
-                Float s_theta_d = dr::sin(theta_d);
-
-                // Compute the reflectance
-                Float reflectance = eval_glint(wavelength, theta_d, theta_o, phi_d, phi_o, 
-                                                  wind_direction, wind_speed, chlorinity);
-
-                // Quadrature step
-                Float weight = azimuth_weight * zenith_weight;
-                Float factor = c_theta_d * s_theta_d * weight;
-                summ += factor;
-                upwelling_opacity += reflectance * factor;
-            }
-        }
-
-        return 1.f - upwelling_opacity / summ;
-        */
-
-       return 1.0f;
-    }
-
     Float r_omega(const Float &wavelength,
                   const Float &pigmentation) {
         Float wavelength_nm = wavelength * 1000.0f;
+        Float pigment_log = dr::log(pigmentation) / dr::log(10.0f);
 
         // Backscattering coefficient
-        Float molecular_scatter_coeff = m_ocean_props.molecular_scatter_coeff(wavelength_nm);
+        Float molecular_scatter_coeff = m_ocean_props.molecular_scatter_coeff_6s(wavelength_nm);
         Float scattering_coeff = 0.30f * dr::pow(pigmentation, 0.62);
-        Float backscatter_ratio = 0.002f + 0.02f * (0.5f - 0.25f * dr::log(pigmentation)) * (550.0 / wavelength_nm);
+        Float backscatter_ratio = 0.002f + 0.02f * (0.5f - 0.25f * pigment_log) * (550.0 / wavelength_nm);
         Float backscatter_coeff = 0.5f * molecular_scatter_coeff + scattering_coeff * backscatter_ratio;
 
         // (Diffuse) attenuation coefficient
@@ -668,11 +591,14 @@ private:
         Float e = m_ocean_props.attn_e(wavelength_nm);
         Float attn_coeff = k + chi * dr::pow(pigmentation, e);
 
+        // If any of the coefficients is zero, we return zero
+        if (backscatter_coeff == 0.0f || attn_coeff == 0.0f)
+            return 0.0f;
+
         // Iterative computation of the reflectance
         Float u = 0.75f;
-        Float r_omega = 0.33f * backscatter_coeff / (u * attn_coeff);
+        Float r_omega = 0.33f * backscatter_coeff / u / attn_coeff;
 
-        //  TODO: Change
         bool converged = false;
         while (!converged) {
             // Update u
@@ -682,11 +608,8 @@ private:
             Float r_omega_new = 0.33f * backscatter_coeff / (u * attn_coeff);
 
             // Create a mask that marks the converged values
-            auto convergence_mask = Mask(dr::abs((r_omega_new - r_omega) / r_omega_new) < 0.001f);
+            auto convergence_mask = Mask(dr::abs((r_omega_new - r_omega) / r_omega_new) < 0.0001f);
             converged = dr::all(convergence_mask);
-
-            //if (dr::abs((r_omega_new - r_omega) / r_omega_new) < 0.001f)
-            //    converged = true;
 
             // Update reflectance ONLY for non-converged values
             r_omega = dr::select(convergence_mask, r_omega, r_omega_new);
@@ -744,7 +667,7 @@ public:
     }
 
     Float eval_underlight(const Vector3f &wi, const Vector3f &wo) const {
-        return m_ocean_utils->eval_underlight(m_wavelength, wi, wo, m_wind_direction, m_wind_speed, m_chlorinity, m_pigmentation);
+        return m_ocean_utils->eval_underlight(m_wavelength, wi, wo, m_chlorinity, m_pigmentation);
     }
 
     Float eval_ocean(const Vector3f &wi, const Vector3f &wo) const {
@@ -765,7 +688,7 @@ public:
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
         bool has_underlight = ctx.is_enabled(BSDFFlags::DiffuseTransmission, 2);
-        if (unlikely(dr::none_or<false>(active) || !has_whitecap))
+        if (unlikely(dr::none_or<false>(active) || !has_whitecap && !has_glint && !has_underlight))
             return { dr::zeros<BSDFSample3f>(), UnpolarizedSpectrum(0.f) };
 
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
@@ -824,7 +747,7 @@ public:
         bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
         bool has_underlight = ctx.is_enabled(BSDFFlags::DiffuseTransmission, 2);
-        if (unlikely(dr::none_or<false>(active) || !has_whitecap))
+        if (unlikely(dr::none_or<false>(active) || !has_whitecap && !has_glint && !has_underlight))
             return 0.f;
 
         Float cos_theta_i = Frame3f::cos_theta(si.wi),
