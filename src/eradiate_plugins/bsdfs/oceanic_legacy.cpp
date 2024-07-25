@@ -151,16 +151,16 @@ public:
         );
     }
 
+    Float effective_reflectance(const Float &wavelength) const {
+        return m_effective_reflectance.eval_pdf(wavelength);
+    }
+
     Float ior_real(const Float &wavelength) const {
         return m_ior_real.eval_pdf(wavelength);
     }
 
     Float ior_cplx(const Float &wavelength) const {
         return m_ior_imag.eval_pdf(wavelength);
-    }
-
-    Float effective_reflectance(const Float &wavelength) const {
-        return m_effective_reflectance.eval_pdf(wavelength);
     }
 
     Float attn_k(const Float &wavelength) const {
@@ -219,8 +219,15 @@ public:
         // Compute the efficiency factor
         Float efficiency = m_f_eff_base;
 
-        // Compute the effective reflectance
-        Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
+        // Compute the effective reflectance according to 6S
+        UInt32 wavelength_idx = 1 + dr::round((wavelength - 0.2f) / 0.1f);
+        Float correction = 0.5f + (wavelength_idx - 1) * 0.1f;
+        Float tabulated_reflectance = m_ocean_props.effective_reflectance(wavelength + 0.1f);
+        Float eff_reflectance = tabulated_reflectance 
+            + (wavelength - correction) * (m_ocean_props.effective_reflectance(wavelength) - tabulated_reflectance) / 0.1f;
+
+        // Old
+        //Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
 
         // Compute the whitecap reflectance
         Float whitecap_reflectance = coverage * efficiency * eff_reflectance;
@@ -630,6 +637,7 @@ public:
 
     OceanicBSDF(const Properties &props) : Base(props) {
         // Retrieve the parameters used in 6SV
+        m_channel = props.get<ScalarInt32>("channel");
         m_wavelength = props.get<ScalarFloat>("wavelength");
         m_wind_speed = props.get<ScalarFloat>("wind_speed");
         m_wind_direction = props.get<ScalarFloat>("wind_direction");
@@ -779,9 +787,31 @@ public:
         // Combine the results
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
 
+        switch (m_channel)
+        {
+            case 0:
+                result[is_reflect] = (coverage * whitecap_reflectance) & active;
+                break;
+            case 1:
+                result[is_reflect] = ((1 - coverage) * glint_reflectance) & active;
+                break;
+            case 2:
+                result[is_reflect] = ((1 - (coverage * whitecap_reflectance)) * underlight_reflectance) & active;
+                break;        
+            default:
+                result[is_reflect] = (coverage * whitecap_reflectance) 
+                    + (1 - coverage) * glint_reflectance
+                    + (1 - (coverage * whitecap_reflectance)) * underlight_reflectance;
+                break;
+        }
+
+        /*
         result[is_reflect] = (coverage * whitecap_reflectance) 
             + (1 - coverage) * glint_reflectance
             + (1 - (coverage * whitecap_reflectance)) * underlight_reflectance;
+        */
+
+        //result[is_reflect] *= cos_theta_o;
         
         return depolarizer<Spectrum>(result) & active;
     }
@@ -811,6 +841,7 @@ public:
     MI_DECLARE_CLASS()
 private:
     // User-provided fields
+    ScalarInt32 m_channel;
     ScalarFloat m_wavelength;
     ScalarFloat m_wind_speed;
     ScalarFloat m_wind_direction;
