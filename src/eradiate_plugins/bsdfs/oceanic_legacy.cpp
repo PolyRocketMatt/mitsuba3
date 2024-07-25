@@ -216,21 +216,14 @@ public:
         // Compute the fractional coverage of whitecaps
         Float coverage = eval_whitecap_coverage(wind_speed);
 
-        // Compute the efficiency factor
-        Float efficiency = m_f_eff_base;
-
-        // Compute the effective reflectance according to 6S
-        UInt32 wavelength_idx = 1 + dr::round((wavelength - 0.2f) / 0.1f);
-        Float correction = 0.5f + (wavelength_idx - 1) * 0.1f;
-        Float tabulated_reflectance = m_ocean_props.effective_reflectance(wavelength + 0.1f);
-        Float eff_reflectance = tabulated_reflectance 
-            + (wavelength - correction) * (m_ocean_props.effective_reflectance(wavelength) - tabulated_reflectance) / 0.1f;
-
         // Old
-        //Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength) + 0.10f;
+        Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength);
 
         // Compute the whitecap reflectance
-        Float whitecap_reflectance = coverage * efficiency * eff_reflectance;
+        Float whitecap_reflectance = coverage * eff_reflectance;
+
+        Log(Warn, "Effective reflectance: %f", eff_reflectance);
+        Log(Warn, "Whitecap reflectance: %f", whitecap_reflectance);
 
         return whitecap_reflectance;
     }
@@ -368,7 +361,7 @@ public:
                           const Float &phi_i, const Float &phi_o,
                           const Float &chlorinity, const Float &pigmentation) {
         // Analogue to 6SV, we return 0.0 if the wavelength is outside the range of [0.4, 0.7]
-        auto mask = Mask(wavelength >= 0.4f || wavelength <= 0.7f);
+        auto outside_range = Mask(wavelength < 0.4f || wavelength > 0.7f);
 
         // Get IOR of water
         Float n_real = m_ocean_props.ior_real(wavelength) + friedman_sverdrup(chlorinity);
@@ -381,14 +374,10 @@ public:
         Float t_u = upwelling_transmittance_fast(theta_o);
         Float t_d = downwelling_transmittance_fast(theta_i);
 
-        //Log(Warn, "R_Omega: %f", r_om);
-        //Log(Warn, "T_U: %f", t_u);
-        //Log(Warn, "T_D: %f", t_d);
-
         // Compute the underlight term
         Float underlight = (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
 
-        return dr::select(mask, underlight, 0.0f);
+        return dr::select(outside_range, 0.0f, underlight);
     }
 
 private:
@@ -404,7 +393,7 @@ private:
 
     // Whitecap parameters
     ScalarFloat m_f_eff_base = 0.4f;
-    ScalarFloat m_monahan_alpha = 2.951e-06f;
+    ScalarFloat m_monahan_alpha = 2.95e-06f;
     ScalarFloat m_monahan_lambda = 3.52f;
 
     // Cox-Munk distribution parameters
@@ -790,7 +779,7 @@ public:
         switch (m_channel)
         {
             case 0:
-                result[is_reflect] = (coverage * whitecap_reflectance) & active;
+                result[is_reflect] = (whitecap_reflectance) & active;
                 break;
             case 1:
                 result[is_reflect] = ((1 - coverage) * glint_reflectance) & active;
@@ -799,7 +788,7 @@ public:
                 result[is_reflect] = ((1 - (coverage * whitecap_reflectance)) * underlight_reflectance) & active;
                 break;        
             default:
-                result[is_reflect] = (coverage * whitecap_reflectance) 
+                result[is_reflect] = whitecap_reflectance
                     + (1 - coverage) * glint_reflectance
                     + (1 - (coverage * whitecap_reflectance)) * underlight_reflectance;
                 break;
