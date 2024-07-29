@@ -222,9 +222,6 @@ public:
         // Compute the whitecap reflectance
         Float whitecap_reflectance = coverage * eff_reflectance;
 
-        Log(Warn, "Effective reflectance: %f", eff_reflectance);
-        Log(Warn, "Whitecap reflectance: %f", whitecap_reflectance);
-
         return whitecap_reflectance;
     }
 
