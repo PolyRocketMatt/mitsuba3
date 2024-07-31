@@ -60,6 +60,8 @@ def test01_chi2_principled_normal(variants_vec_backends_once_rgb):
     )
     assert chi2.run()
 
+    chi2._dump_tables()
+
 
 def test02_chi2_spec_trans_outside(variants_vec_backends_once_rgb):
     # spec_trans outside (wi.z()>0)

@@ -48,3 +48,5 @@ def test03_chi2(variants_vec_backends_once_rgb):
     )
 
     assert chi2.run()
+
+    chi2._dump_tables()

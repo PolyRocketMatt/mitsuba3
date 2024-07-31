@@ -37,7 +37,7 @@ def test02_chi2_rough(variants_vec_backends_once_rgb):
     )
 
     assert chi2.run()
-
+    
 
 def test03_eval_pdf(variant_scalar_rgb):
     bsdf = mi.load_dict({'type': 'roughplastic'})
