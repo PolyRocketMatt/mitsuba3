@@ -629,21 +629,18 @@ public:
         m_wind_direction = props.get<ScalarFloat>("wind_direction");
         m_chlorinity = props.get<ScalarFloat>("chlorinity");
         m_pigmentation = props.get<ScalarFloat>("pigmentation");
+        m_alpha = props.get<ScalarFloat>("alpha");
 
         // Initialize the ocean utilities
         m_ocean_utils = new OceanUtilities<Float, Spectrum>();
 
         // Set the BSDF flags
-        // => Whitecap reflectance is "diffuse"
+        // => Whitecap and underlight reflectance is "diffuse"
         m_components.push_back(BSDFFlags::DiffuseReflection | 
                                BSDFFlags::FrontSide);
     
         // => Sun glint reflectance at the water surface is "specular"
         m_components.push_back(BSDFFlags::GlossyReflection | 
-                               BSDFFlags::FrontSide | BSDFFlags::BackSide);
-
-        // => Underlight reflectance is "diffuse" but transmissive
-        m_components.push_back(BSDFFlags::DiffuseTransmission | 
                                BSDFFlags::FrontSide | BSDFFlags::BackSide);
 
         // Set all the flags
@@ -679,12 +676,28 @@ public:
            Float sample1, const Point2f &sample2, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
-        bool has_whitecap = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
-        bool has_glint = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
-        bool has_underlight = ctx.is_enabled(BSDFFlags::DiffuseTransmission, 2);
-        if (unlikely(dr::none_or<false>(active) || !has_whitecap && !has_glint && !has_underlight))
-            return { dr::zeros<BSDFSample3f>(), UnpolarizedSpectrum(0.f) };
+        bool has_diffuse = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
+        bool has_specular = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
 
+
+        Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        BSDFSample3f bs = dr::zeros<BSDFSample3f>();
+
+        active &= cos_theta_i > 0.f;
+        if (unlikely(dr::none_or<false>(active)) || !has_diffuse && !has_specular)
+            return { bs, 0.f };
+
+        bs.wo = warp::square_to_cosine_hemisphere(sample2);
+        bs.pdf = pdf(ctx, si, bs.wo, active);
+        bs.eta = 1.f;
+        bs.sampled_type = +BSDFFlags::DiffuseReflection;
+        bs.sampled_component = 0;
+
+        UnpolarizedSpectrum value = eval_ocean(si.wi, bs.wo);
+
+        return { bs, (depolarizer<Spectrum>(value)) & (active && bs.pdf > 0.f) };
+
+        /*
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
         Vector3f wo = warp::square_to_cosine_hemisphere(sample2);
 
@@ -727,9 +740,10 @@ public:
 
         bs.eta = 1.f;
         active &= bs.pdf > 0.f;
-        result = eval_ocean(si.wi, wo);
+        result = eval_ocean(si.wi, wo) * Frame3f::cos_theta(wo) / bs.pdf;
 
-        return { bs, (depolarizer<Spectrum>(result) / bs.pdf) & active };
+        return { bs, (depolarizer<Spectrum>(result)) & active };
+        */
     }
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
@@ -791,13 +805,8 @@ public:
                 break;
         }
 
-        /*
-        result[is_reflect] = (coverage * whitecap_reflectance) 
-            + (1 - coverage) * glint_reflectance
-            + (1 - (coverage * whitecap_reflectance)) * underlight_reflectance;
-        */
-
-        //result[is_reflect] *= cos_theta_o;
+        // Cosine foreshortening factor
+        result[is_reflect] *= cos_theta_o;
         
         return depolarizer<Spectrum>(result) & active;
     }
@@ -806,10 +815,16 @@ public:
               const Vector3f &wo, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
-        return dr::select(active, warp::square_to_cosine_hemisphere_pdf(wo), 0.f);
+        Float cos_theta_i = Frame3f::cos_theta(si.wi),
+              cos_theta_o = Frame3f::cos_theta(wo);
+
+        Float pdf = warp::square_to_cosine_hemisphere_pdf(wo);
+
+        return dr::select(cos_theta_i > 0.f && cos_theta_o > 0.f, pdf, 0.f);
     }
 
     void traverse(TraversalCallback *callback) override {
+
     }
 
     std::string to_string() const override {
@@ -833,6 +848,7 @@ private:
     ScalarFloat m_wind_direction;
     ScalarFloat m_chlorinity;
     ScalarFloat m_pigmentation;
+    ScalarFloat m_alpha;
 
     // Fields used to compute whitecap reflectance
     OceanUtilities<Float, Spectrum> *m_ocean_utils;
