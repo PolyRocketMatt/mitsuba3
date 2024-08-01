@@ -386,15 +386,12 @@ public:
         // Transform directions into azimuthal and zenithal angles
         Float theta_i = dr::acos(wi.z());
         Float theta_o = dr::acos(wo.z());
-        Float phi_i = dr::atan2(wi.y(), wi.x());
-        Float phi_o = dr::atan2(wo.y(), wo.x());
 
-        return eval_underlight(wavelength, theta_i, theta_o, phi_i, phi_o, chlorinity, pigmentation);
+        return eval_underlight(wavelength, theta_i, theta_o, chlorinity, pigmentation);
     }
 
     Float eval_underlight(const Float &wavelength, 
                           const Float &theta_i, const Float &theta_o,
-                          const Float &phi_i, const Float &phi_o,
                           const Float &chlorinity, const Float &pigmentation) {
         // Analogue to 6SV, we return 0.0 if the wavelength is outside the range of [0.4, 0.7]
         auto outside_range = Mask(wavelength < 0.4f || wavelength > 0.7f);
@@ -439,45 +436,6 @@ private:
 
     // Underlight parameters
     ScalarFloat m_underlight_alpha = 0.485f;
-
-    ScalarFloat azimuth_pts[48] = { 
-       -0.99877101f, -0.99353017f, -0.98412458f, -0.97059159f, -0.9529877f ,
-       -0.93138669f, -0.90587914f, -0.87657202f, -0.84358826f, -0.8070662f ,
-       -0.76715903f, -0.72403413f, -0.67787238f, -0.6288674f , -0.57722473f,
-       -0.52316097f, -0.4669029f , -0.40868648f, -0.34875589f, -0.28736249f,
-       -0.22476379f, -0.16122236f, -0.0970047f , -0.03238017f,  0.03238017f,
-        0.0970047f ,  0.16122236f,  0.22476379f,  0.28736249f,  0.34875589f,
-        0.40868648f,  0.4669029f ,  0.52316097f,  0.57722473f,  0.6288674f ,
-        0.67787238f,  0.72403413f,  0.76715903f,  0.8070662f ,  0.84358826f,
-        0.87657202f,  0.90587914f,  0.93138669f,  0.9529877f ,  0.97059159f,
-        0.98412458f,  0.99353017f,  0.99877101f };
-    ScalarFloat azimuth_weights[48] = {
-        0.00315335f, 0.00732755f, 0.01147723f, 0.01557932f, 0.01961616f,
-        0.02357076f, 0.02742651f, 0.03116723f, 0.03477722f, 0.03824135f,
-        0.04154508f, 0.04467456f, 0.04761666f, 0.05035904f, 0.05289019f,
-        0.0551995f , 0.05727729f, 0.05911484f, 0.06070444f, 0.06203942f,
-        0.06311419f, 0.06392424f, 0.06446616f, 0.0647377f , 0.0647377f ,
-        0.06446616f, 0.06392424f, 0.06311419f, 0.06203942f, 0.06070444f,
-        0.05911484f, 0.05727729f, 0.0551995f , 0.05289019f, 0.05035904f,
-        0.04761666f, 0.04467456f, 0.04154508f, 0.03824135f, 0.03477722f,
-        0.03116723f, 0.02742651f, 0.02357076f, 0.01961616f, 0.01557932f,
-        0.01147723f, 0.00732755f, 0.00315335f
-    };
-    ScalarFloat zenith_pts[48] = {
-       -0.99518722f, -0.97472856f, -0.93827455f, -0.88641553f, -0.82000199f,
-       -0.74012419f, -0.64809365f, -0.54542147f, -0.43379351f, -0.31504268f,
-       -0.19111887f, -0.06405689f,  0.06405689f,  0.19111887f,  0.31504268f,
-        0.43379351f,  0.54542147f,  0.64809365f,  0.74012419f,  0.82000199f,
-        0.88641553f,  0.93827455f,  0.97472856f,  0.99518722f
-    };
-    ScalarFloat zenith_weights[24] = {
-        0.01234123f, 0.02853139f, 0.04427744f, 0.05929858f, 0.07334648f,
-        0.08619016f, 0.09761865f, 0.10744427f, 0.11550567f, 0.12167047f,
-        0.12583746f, 0.1279382f , 0.1279382f , 0.12583746f, 0.12167047f,
-        0.11550567f, 0.10744427f, 0.09761865f, 0.08619016f, 0.07334648f,
-        0.05929858f, 0.04427744f, 0.02853139f, 0.01234123f
-    };
-    
 
     // "Safe" version of the cosine function
     Float safe_cos(const Float &angle) const {
@@ -654,66 +612,46 @@ public:
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
 
         active &= cos_theta_i > 0.f;
-        if (unlikely(dr::none_or<false>(active)) || !has_diffuse && !has_specular)
+        if (unlikely(dr::none_or<false>(active)) || (!has_diffuse && !has_specular))
             return { bs, 0.f };
 
-        bs.wo = warp::square_to_cosine_hemisphere(sample2);
-        bs.pdf = pdf(ctx, si, bs.wo, active);
-        bs.eta = 1.f;
-        bs.sampled_type = +BSDFFlags::DiffuseReflection;
-        bs.sampled_component = 0;
-
-        UnpolarizedSpectrum value = eval_ocean(si.wi, bs.wo) * Frame3f::cos_theta(bs.wo) / bs.pdf;
-
-        return { bs, (depolarizer<Spectrum>(value)) & (active && bs.pdf > 0.f) };
-
-        /*
-        Float cos_theta_i = Frame3f::cos_theta(si.wi);
-        Vector3f wo = warp::square_to_cosine_hemisphere(sample2);
-
-        UnpolarizedSpectrum result(0.f);
-        BSDFSample3f bs = dr::zeros<BSDFSample3f>();
-
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
-        Float glint = std::rand() / (Float) RAND_MAX;
+        Float prob_diff = coverage;
 
-        // Based on the coverage, we choose to sample either the whitecaps or the sun glint / underlight
-        Float prob_whitecap = coverage,
-              prob_glint = (1 - coverage) * glint;
+        // For Blinn-Phong, we need to sample the half-vector
+        Float ksi_1 = sample2.x(),
+              ksi_2 = sample2.y();
+        Float theta_h = dr::acos(dr::pow(ksi_1, 1.f / (m_alpha + 1.f)));
+        Float phi_h = 2.f * dr::Pi<Float> * ksi_2;
+        Vector3f half = Vector3f(dr::sin(theta_h) * dr::cos(phi_h),
+                                 dr::sin(theta_h) * dr::sin(phi_h),
+                                 dr::cos(theta_h));
 
-        // TODO: What if one of lobes disabled?
+        Mask sample_diffuse = active & (sample1 < prob_diff),
+             sample_glint = active && !sample_diffuse;
 
-        Mask sample_whitecap = active && (sample1 < prob_whitecap),
-             sample_glint = active && (sample1 >= prob_whitecap && sample1 < prob_whitecap + prob_glint),
-             sample_underlight = active && (sample1 >= prob_whitecap + prob_glint);
-
-        if (dr::any_or<true>(sample_whitecap)) {
-            dr::masked(bs.wo, sample_whitecap) = wo;
-            dr::masked(bs.pdf, sample_whitecap) = pdf(ctx, si, wo, sample_whitecap);
-            dr::masked(bs.sampled_component, sample_whitecap) = 0;
-            dr::masked(bs.sampled_type, sample_whitecap) = +BSDFFlags::DiffuseReflection; 
+        if (dr::any_or<true>(sample_diffuse)) {
+            // In the case of sampling the diffuse component, the outgoing direction
+            // is sampled from a cosine-weighted hemisphere.
+            dr::masked(bs.wo, sample_diffuse) = warp::square_to_cosine_hemisphere(sample2);
+            dr::masked(bs.sampled_component, sample_diffuse) = 0;
+            dr::masked(bs.sampled_type, sample_diffuse) = +BSDFFlags::DiffuseReflection;
         }
 
         if (dr::any_or<true>(sample_glint)) {
-            dr::masked(bs.wo, sample_glint) = wo;
-            dr::masked(bs.pdf, sample_glint) = pdf(ctx, si, wo, sample_glint);
+            // In the case of sampling the glint component, the outgoing direction
+            // is sampled using the Blinn-Phong distribution.
+            dr::masked(bs.wo, sample_glint) = 2.0f * dr::dot(si.wi, half) * half - si.wi;
             dr::masked(bs.sampled_component, sample_glint) = 1;
             dr::masked(bs.sampled_type, sample_glint) = +BSDFFlags::GlossyReflection;
         }
 
-        if (dr::any_or<true>(sample_underlight)) {
-            dr::masked(bs.wo, sample_underlight) = wo;
-            dr::masked(bs.pdf, sample_underlight) = pdf(ctx, si, wo, sample_underlight);
-            dr::masked(bs.sampled_component, sample_underlight) = 2;
-            dr::masked(bs.sampled_type, sample_underlight) = +BSDFFlags::DiffuseTransmission;
-        }
-
+        bs.pdf = pdf(ctx, si, bs.wo, active);
         bs.eta = 1.f;
-        active &= bs.pdf > 0.f;
-        result = eval_ocean(si.wi, wo) * Frame3f::cos_theta(wo) / bs.pdf;
 
-        return { bs, (depolarizer<Spectrum>(result)) & active };
-        */
+        UnpolarizedSpectrum value = eval_ocean(si.wi, bs.wo) * Frame3f::cos_theta(bs.wo) / bs.pdf;
+
+        return { bs, (depolarizer<Spectrum>(value)) & (active && bs.pdf > 0.f) };
     }
 
     Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
@@ -756,6 +694,7 @@ public:
         // Combine the results
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
 
+        // For debugging purposes, the channel indicates what term of the BRDF to evaluate
         switch (m_channel)
         {
             case 0:
@@ -776,29 +715,41 @@ public:
 
         // Cosine foreshortening factor
         result[is_reflect] *= cos_theta_o;
+
+        // Compute the Blinn-Phong term
         blinn[is_reflect] = eval_blinn_phong(si.wi, wo, si.n);
 
+        // Compute normalized values over the vector
         auto normalized_r = result / dr::max(dr::max(result));
         auto normalized_b = blinn / dr::max(dr::max(blinn));
 
+        // For debugging and visualization purposes, we support multiple visualisation types
         switch (m_type) 
         {
+            // Visualize the ocean reflectance
             case 0:
-                result = result;
                 break;
+
+            // Visualize the Blinn-Phong term
             case 1:
                 result = blinn;
                 break;
+
+            // Visualize the normalized ocean reflectance
             case 2:
                 result = normalized_r;
                 break;
+
+            // Visualize the difference between the normalized ocean and 
+            // Blinn-Phong reflectance
             case 3:
                 result = normalized_r - normalized_b;
                 break;
+        
             default:
-                result = result;
                 break;
         }
+
         return depolarizer<Spectrum>(result) & active;
     }
 
@@ -806,16 +757,37 @@ public:
               const Vector3f &wo, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
+        /*
         Float cos_theta_i = Frame3f::cos_theta(si.wi),
               cos_theta_o = Frame3f::cos_theta(wo);
 
         Float pdf = warp::square_to_cosine_hemisphere_pdf(wo);
 
         return dr::select(cos_theta_i > 0.f && cos_theta_o > 0.f, pdf, 0.f);
-    }
+        */
 
-    void traverse(TraversalCallback *callback) override {
+        bool has_diffuse = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0),
+             has_specular = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
 
+        if (unlikely((!has_diffuse && !has_specular) || dr::none_or<false>(active)))
+            return 0.f;
+
+        Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
+        Float prob_diff = coverage,
+              prob_spec = (1 - coverage);
+
+        // For Blinn-Phong, we need the half vector
+        Vector3f half = dr::normalize(si.wi + wo);
+
+        // We multiply the probability of the specular lobe with the pdf of 
+        // the Blinn-Phong distribution and the probability of the diffuse lobe
+        // with the pdf of the cosine-weighted hemisphere.
+        Float pdf_diff = warp::square_to_cosine_hemisphere_pdf(wo),
+              pdf_spec = dr::InvTwoPi<Float> * (m_alpha + 1) * dr::pow(Frame3f::cos_theta(half), m_alpha);
+
+        Float pdf = prob_diff * pdf_diff + prob_spec * pdf_spec;
+
+        return pdf;
     }
 
     std::string to_string() const override {
