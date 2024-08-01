@@ -135,6 +135,41 @@ public:
                                                                     0.9665641214393463, 0.9639756558797935, 0.9609870543861947, 0.9573905793466994, 0.9531669207358379, 
                                                                     0.948072872705384, 0.9422679803838081, 0.9357601370709014, 0.9295328947161291 };
 
+        // Initialize the vectors with azimuth/zenith points/weights
+        m_azim_pts = dr::Array<float, 48>(  -0.99877101f, -0.99353017f, -0.98412458f, -0.97059159f, -0.9529877f ,
+                                            -0.93138669f, -0.90587914f, -0.87657202f, -0.84358826f, -0.8070662f ,
+                                            -0.76715903f, -0.72403413f, -0.67787238f, -0.6288674f , -0.57722473f,
+                                            -0.52316097f, -0.4669029f , -0.40868648f, -0.34875589f, -0.28736249f,
+                                            -0.22476379f, -0.16122236f, -0.0970047f , -0.03238017f,  0.03238017f,
+                                            0.0970047f  ,  0.16122236f,  0.22476379f,  0.28736249f,  0.34875589f,
+                                            0.40868648f ,  0.4669029f ,  0.52316097f,  0.57722473f,  0.6288674f ,
+                                            0.67787238f ,  0.72403413f,  0.76715903f,  0.8070662f ,  0.84358826f,
+                                            0.87657202f ,  0.90587914f,  0.93138669f,  0.9529877f ,  0.97059159f,
+                                            0.98412458f ,  0.99353017f,  0.99877101f);
+
+        m_zenith_pts = dr::Array<float, 24>(-0.99518722f, -0.97472856f, -0.93827455f, -0.88641553f, -0.82000199f,
+                                            -0.74012419f, -0.64809365f, -0.54542147f, -0.43379351f, -0.31504268f,
+                                            -0.19111887f, -0.06405689f,  0.06405689f,  0.19111887f,  0.31504268f,
+                                            0.43379351f ,  0.54542147f,  0.64809365f,  0.74012419f,  0.82000199f,
+                                            0.88641553f ,  0.93827455f,  0.97472856f,  0.99518722f);
+
+        m_azim_weights = dr::Array<float, 48>(  0.00315335f, 0.00732755f, 0.01147723f, 0.01557932f, 0.01961616f,
+                                                0.02357076f, 0.02742651f, 0.03116723f, 0.03477722f, 0.03824135f,
+                                                0.04154508f, 0.04467456f, 0.04761666f, 0.05035904f, 0.05289019f,
+                                                0.0551995f , 0.05727729f, 0.05911484f, 0.06070444f, 0.06203942f,
+                                                0.06311419f, 0.06392424f, 0.06446616f, 0.0647377f , 0.0647377f ,
+                                                0.06446616f, 0.06392424f, 0.06311419f, 0.06203942f, 0.06070444f,
+                                                0.05911484f, 0.05727729f, 0.0551995f , 0.05289019f, 0.05035904f,
+                                                0.04761666f, 0.04467456f, 0.04154508f, 0.03824135f, 0.03477722f,
+                                                0.03116723f, 0.02742651f, 0.02357076f, 0.01961616f, 0.01557932f,
+                                                0.01147723f, 0.00732755f, 0.00315335f);
+
+        m_zenith_weights = dr::Array<float, 24>(0.01234123f, 0.02853139f, 0.04427744f, 0.05929858f, 0.07334648f,
+                                                0.08619016f, 0.09761865f, 0.10744427f, 0.11550567f, 0.12167047f,
+                                                0.12583746f, 0.1279382f , 0.1279382f , 0.12583746f, 0.12167047f,
+                                                0.11550567f, 0.10744427f, 0.09761865f, 0.08619016f, 0.07334648f,
+                                                0.05929858f, 0.04427744f, 0.02853139f, 0.01234123f);
+ 
         // Construct distributions from the provided data sets
         m_effective_reflectance = IrregularContinuousDistribution<Float>(
             wc_wavelengths.data(), wc_data.data(), wc_data.size()
@@ -237,6 +272,12 @@ private:
     IrregularContinuousDistribution<Float> m_upwelling_transmittance;
     IrregularContinuousDistribution<Float> m_downwelling_transmittance;
 
+    // Azimuth/Zenith points and weights for quadrature
+    dr::Array<float, 48> m_azim_pts;
+    dr::Array<float, 24> m_zenith_pts;
+    
+    dr::Array<float, 48> m_azim_weights;
+    dr::Array<float, 24> m_zenith_weights;
 };
 
 template<typename Float, typename Spectrum>
@@ -408,6 +449,8 @@ public:
         Float t_u = upwelling_transmittance_lut(theta_o);
         Float t_d = downwelling_transmittance_lut(theta_i);
 
+        downwelling_transmittance_quadrature(theta_i);
+
         // Compute the underlight term
         Float underlight = (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
 
@@ -454,7 +497,34 @@ private:
     }
 
     Float downwelling_transmittance_quadrature(const Float &theta_i) {
+        // Compute quadrature points and weights
+        std::pair<FloatStorage, FloatStorage> azimuth_quad = quad::gauss_legendre<FloatStorage>(48);
+        std::pair<FloatStorage, FloatStorage> zenith_quad = quad::gauss_legendre<FloatStorage>(24);
 
+        /*
+        // Deconstruct
+        FloatStorage azim_pts = azimuth_quad.first;
+        FloatStorage azim_weights = azimuth_quad.second;
+
+        FloatStorage zenith_pts = zenith_quad.first;
+        FloatStorage zenith_weights = zenith_quad.second;
+
+        // Transform points
+        FloatStorage transformed_azim_pts = dr::Pi<Float> * (azim_pts + 1.0f);
+        FloatStorage transformed_zenith_pts = dr::InvFourPi<Float> * (zenith_pts + 1.0f);
+
+        // To perform the quadrature, we loop and gather each azimuth
+        //for (int i = 0; i < 48; ++i) {
+        //    auto gather_mask = Mask(true);
+        //    Float azimuth = dr::gather<Float>(transformed_azim_pts, UInt32(i));
+        //    Log(Warn, "Azimuth: %f", azimuth); 
+        // }
+
+        // Log the type of the transformed azimuth points
+        Log(Warn, "Transformed Azim: %s", transformed_azim_pts);
+        */
+    
+        return 0.0f;
     }
 
     Float upwelling_transmittance_quadrature(const Float &theta_o) {
@@ -613,30 +683,6 @@ public:
            Float sample1, const Point2f &sample2, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
-        
-        /*
-        bool has_diffuse = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
-        bool has_specular = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
-
-
-        Float cos_theta_i = Frame3f::cos_theta(si.wi);
-        BSDFSample3f bs = dr::zeros<BSDFSample3f>();
-
-        active &= cos_theta_i > 0.f;
-        if (unlikely(dr::none_or<false>(active)) || !has_diffuse && !has_specular)
-            return { bs, 0.f };
-
-        bs.wo = warp::square_to_cosine_hemisphere(sample2);
-        bs.pdf = pdf(ctx, si, bs.wo, active);
-        bs.eta = 1.f;
-        bs.sampled_type = +BSDFFlags::DiffuseReflection;
-        bs.sampled_component = 0;
-
-        UnpolarizedSpectrum value = eval_ocean(si.wi, bs.wo) * Frame3f::cos_theta(bs.wo) / bs.pdf;
-
-        return { bs, (depolarizer<Spectrum>(value)) & (active && bs.pdf > 0.f) };
-        */
-
         bool has_diffuse = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         bool has_specular = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
 
@@ -752,8 +798,6 @@ public:
         // Cosine foreshortening factor
         result[is_reflect] *= cos_theta_o;
 
-        Log(Warn, "Surface Normal: %s", si.n);
-
         // Compute the Blinn-Phong term
         blinn[is_reflect] = eval_blinn_phong(si.wi, wo, si.n);
 
@@ -794,15 +838,6 @@ public:
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
               const Vector3f &wo, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
-
-        /*
-        Float cos_theta_i = Frame3f::cos_theta(si.wi),
-              cos_theta_o = Frame3f::cos_theta(wo);
-
-        Float pdf = warp::square_to_cosine_hemisphere_pdf(wo);
-
-        return dr::select(cos_theta_i > 0.f && cos_theta_o > 0.f, pdf, 0.f);
-        */
 
         bool has_diffuse = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0),
              has_specular = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
