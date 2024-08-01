@@ -665,13 +665,15 @@ public:
             // For Blinn-Phong, we need to sample the half-vector
             Float ksi_1 = sample2.x(),
                   ksi_2 = sample2.y();
-            
-            Float phi_p = dr::TwoPi<Float> * ksi_1;
-            Float alpha = dr::acos(dr::pow(ksi_2, 1.f / (m_shininess + 1.f)));
 
-            Vector3f wo = dr::normalize(Vector3f(dr::sin(alpha) * dr::cos(phi_p),
-                                                 dr::sin(alpha) * dr::sin(phi_p),
-                                                 dr::cos(alpha)));
+            Float phi_h = dr::TwoPi<Float> * ksi_1;
+            Float theta_h = dr::acos(dr::pow(ksi_2, 1.f / (m_shininess + 2.f)));
+
+            Vector3f half = dr::normalize(Vector3f(dr::sin(theta_h) * dr::cos(phi_h),
+                                                 dr::sin(theta_h) * dr::sin(phi_h),
+                                                 dr::cos(theta_h)));
+
+            Vector3f wo = 2.f * dr::dot(si.wi, half) * half - si.wi;
 
             // In the case of sampling the glint component, the outgoing direction
             // is sampled using the Blinn-Phong distribution.
@@ -812,14 +814,20 @@ public:
         Float weight_diffuse = coverage,
               weight_specular = (1 - coverage);
 
-        Vector3f reflected_incoming = Vector3f(-si.wi.x(), -si.wi.y(), si.wi.z());
-        Float cos_alpha = dr::dot(wo, reflected_incoming);
+        // Check if the normal has only zeros. If this is the case, use a default normal
+        Vector3f normal = si.n;
+        if (dr::all(normal == 0.f))
+            normal = Vector3f(0.f, 0.f, 1.f);
+
+        Vector3f half = dr::normalize(si.wi + wo);
+        Float projection = dr::dot(half, normal);
+        Float D = ((m_shininess + 2.0f) / dr::TwoPi<Float>) * dr::pow(projection, m_shininess);
 
         // We multiply the probability of the specular lobe with the pdf of 
         // the Blinn-Phong distribution and the probability of the diffuse lobe
         // with the pdf of the cosine-weighted hemisphere.
         Float pdf_diffuse = warp::square_to_cosine_hemisphere_pdf(wo),
-              pdf_specular = dr::pow(cos_alpha, m_shininess) * (m_shininess + 1.0f) / (dr::TwoPi<Float>);
+              pdf_specular = (D * projection) / (4.0f * dr::dot(si.wi, half));
 
         Float pdf = weight_diffuse * pdf_diffuse + weight_specular * pdf_specular;
 
