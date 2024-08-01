@@ -8,12 +8,13 @@ def test01_chi2(variants_vec_backends_once_rgb):
     params = {
         'type': 'oceanic_legacy',
         'channel': 3,
+        'visual_type': 0,
         'wavelength': 2.2,
-        'wind_speed': 30,
+        'wind_speed': 2,
         'wind_direction': 0,
         'chlorinity': 19,
         'pigmentation': 0.3,
-        'alpha': 1.0,
+        'shininess': 10.0,
     }
     sample_func, pdf_func = mi.chi2.BSDFAdapter("oceanic_legacy", params)
 

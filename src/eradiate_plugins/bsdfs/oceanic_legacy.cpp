@@ -236,6 +236,7 @@ private:
     // Upwelling and downwelling transmittance data
     IrregularContinuousDistribution<Float> m_upwelling_transmittance;
     IrregularContinuousDistribution<Float> m_downwelling_transmittance;
+
 };
 
 template<typename Float, typename Spectrum>
@@ -452,6 +453,14 @@ private:
         return 0.00017492711f * (0.03f + 1.805f * chlorinity);
     }
 
+    Float downwelling_transmittance_quadrature(const Float &theta_i) {
+
+    }
+
+    Float upwelling_transmittance_quadrature(const Float &theta_o) {
+        
+    }
+
     Float downwelling_transmittance_polynomial(const Float &theta_i) {
         // Evaluate fitted downwelling polynomial
         // Coefficients: 0.00882913 -0.03803999  0.02232457 -0.00533469  0.97575765
@@ -543,7 +552,7 @@ public:
         m_wind_direction = props.get<ScalarFloat>("wind_direction");
         m_chlorinity = props.get<ScalarFloat>("chlorinity");
         m_pigmentation = props.get<ScalarFloat>("pigmentation");
-        m_alpha = props.get<ScalarFloat>("alpha");
+        m_shininess = props.get<ScalarFloat>("shininess");
 
         // Initialize the ocean utilities
         m_ocean_utils = new OceanUtilities<Float, Spectrum>();
@@ -588,14 +597,14 @@ public:
 
     Float eval_blinn_phong(const Vector3f &wi, const Vector3f &wo, const Normal3f &normal) const {
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
-        Float factor = (m_alpha + 2.0f) / (2.0f * dr::Pi<Float>);
+        Float factor = (m_shininess + 2.0f) / (2.0f * dr::Pi<Float>);
         Vector3f half = dr::normalize(wi + wo);
         Float dot = dr::dot(half, normal);
 
         // Blinn-phong => clamp dot to above zero
         dot = dr::clamp(dot, 0.0f, 1.0f);
 
-        Float phong = dr::pow(dot, m_alpha);
+        Float phong = dr::pow(dot, m_shininess);
 
         return coverage + (1 - coverage) * factor * phong;
     }
@@ -604,9 +613,32 @@ public:
            Float sample1, const Point2f &sample2, Mask active) const override {
         MI_MASKED_FUNCTION(ProfilerPhase::BSDFSample, active);
 
+        
+        /*
         bool has_diffuse = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
         bool has_specular = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
 
+
+        Float cos_theta_i = Frame3f::cos_theta(si.wi);
+        BSDFSample3f bs = dr::zeros<BSDFSample3f>();
+
+        active &= cos_theta_i > 0.f;
+        if (unlikely(dr::none_or<false>(active)) || !has_diffuse && !has_specular)
+            return { bs, 0.f };
+
+        bs.wo = warp::square_to_cosine_hemisphere(sample2);
+        bs.pdf = pdf(ctx, si, bs.wo, active);
+        bs.eta = 1.f;
+        bs.sampled_type = +BSDFFlags::DiffuseReflection;
+        bs.sampled_component = 0;
+
+        UnpolarizedSpectrum value = eval_ocean(si.wi, bs.wo) * Frame3f::cos_theta(bs.wo) / bs.pdf;
+
+        return { bs, (depolarizer<Spectrum>(value)) & (active && bs.pdf > 0.f) };
+        */
+
+        bool has_diffuse = ctx.is_enabled(BSDFFlags::DiffuseReflection, 0);
+        bool has_specular = ctx.is_enabled(BSDFFlags::GlossyReflection, 1);
 
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
         BSDFSample3f bs = dr::zeros<BSDFSample3f>();
@@ -617,15 +649,6 @@ public:
 
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
         Float prob_diff = coverage;
-
-        // For Blinn-Phong, we need to sample the half-vector
-        Float ksi_1 = sample2.x(),
-              ksi_2 = sample2.y();
-        Float theta_h = dr::acos(dr::pow(ksi_1, 1.f / (m_alpha + 1.f)));
-        Float phi_h = 2.f * dr::Pi<Float> * ksi_2;
-        Vector3f half = Vector3f(dr::sin(theta_h) * dr::cos(phi_h),
-                                 dr::sin(theta_h) * dr::sin(phi_h),
-                                 dr::cos(theta_h));
 
         Mask sample_diffuse = active & (sample1 < prob_diff),
              sample_glint = active && !sample_diffuse;
@@ -639,9 +662,20 @@ public:
         }
 
         if (dr::any_or<true>(sample_glint)) {
+            // For Blinn-Phong, we need to sample the half-vector
+            Float ksi_1 = sample2.x(),
+                  ksi_2 = sample2.y();
+            
+            Float phi_p = dr::TwoPi<Float> * ksi_1;
+            Float alpha = dr::acos(dr::pow(ksi_2, 1.f / (m_shininess + 1.f)));
+
+            Vector3f wo = dr::normalize(Vector3f(dr::sin(alpha) * dr::cos(phi_p),
+                                                 dr::sin(alpha) * dr::sin(phi_p),
+                                                 dr::cos(alpha)));
+
             // In the case of sampling the glint component, the outgoing direction
             // is sampled using the Blinn-Phong distribution.
-            dr::masked(bs.wo, sample_glint) = 2.0f * dr::dot(si.wi, half) * half - si.wi;
+            dr::masked(bs.wo, sample_glint) = wo; 
             dr::masked(bs.sampled_component, sample_glint) = 1;
             dr::masked(bs.sampled_type, sample_glint) = +BSDFFlags::GlossyReflection;
         }
@@ -716,6 +750,8 @@ public:
         // Cosine foreshortening factor
         result[is_reflect] *= cos_theta_o;
 
+        Log(Warn, "Surface Normal: %s", si.n);
+
         // Compute the Blinn-Phong term
         blinn[is_reflect] = eval_blinn_phong(si.wi, wo, si.n);
 
@@ -773,21 +809,24 @@ public:
             return 0.f;
 
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
-        Float prob_diff = coverage,
-              prob_spec = (1 - coverage);
+        Float weight_diffuse = coverage,
+              weight_specular = (1 - coverage);
 
-        // For Blinn-Phong, we need the half vector
-        Vector3f half = dr::normalize(si.wi + wo);
+        Vector3f reflected_incoming = Vector3f(-si.wi.x(), -si.wi.y(), si.wi.z());
+        Float cos_alpha = dr::dot(wo, reflected_incoming);
 
         // We multiply the probability of the specular lobe with the pdf of 
         // the Blinn-Phong distribution and the probability of the diffuse lobe
         // with the pdf of the cosine-weighted hemisphere.
-        Float pdf_diff = warp::square_to_cosine_hemisphere_pdf(wo),
-              pdf_spec = dr::InvTwoPi<Float> * (m_alpha + 1) * dr::pow(Frame3f::cos_theta(half), m_alpha);
+        Float pdf_diffuse = warp::square_to_cosine_hemisphere_pdf(wo),
+              pdf_specular = dr::pow(cos_alpha, m_shininess) * (m_shininess + 1.0f) / (dr::TwoPi<Float>);
 
-        Float pdf = prob_diff * pdf_diff + prob_spec * pdf_spec;
+        Float pdf = weight_diffuse * pdf_diffuse + weight_specular * pdf_specular;
 
-        return pdf;
+        // If the outgoing direction is in the lower hemisphere, we return zero
+        Float cos_theta_o = Frame3f::cos_theta(wo);
+
+        return dr::select(cos_theta_o > 0.f, pdf, 0.f);
     }
 
     std::string to_string() const override {
@@ -798,7 +837,7 @@ public:
             << "  wind_direction = " << string::indent(m_wind_direction) << std::endl
             << "  chlorinity = " << string::indent(m_chlorinity) << std::endl
             << "  pigmentation = " << string::indent(m_pigmentation) << std::endl
-            << "  alpha = " << string::indent(m_alpha) << std::endl
+            << "  shininess = " << string::indent(m_shininess) << std::endl
             << "]";
         return oss.str();
     }
@@ -813,7 +852,7 @@ private:
     ScalarFloat m_wind_direction;
     ScalarFloat m_chlorinity;
     ScalarFloat m_pigmentation;
-    ScalarFloat m_alpha;
+    ScalarFloat m_shininess;
 
     // Fields used to compute whitecap reflectance
     OceanUtilities<Float, Spectrum> *m_ocean_utils;
