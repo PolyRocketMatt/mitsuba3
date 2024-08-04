@@ -498,8 +498,8 @@ private:
 
     Float downwelling_transmittance_quadrature(const Float &theta_i) {
         // Compute quadrature points and weights
-        std::pair<FloatStorage, FloatStorage> azimuth_quad = quad::gauss_legendre<FloatStorage>(48);
-        std::pair<FloatStorage, FloatStorage> zenith_quad = quad::gauss_legendre<FloatStorage>(24);
+        auto azimuth_quad = quad::gauss_legendre<FloatStorage>(48);
+        auto zenith_quad = quad::gauss_legendre<FloatStorage>(24);
 
         /*
         // Deconstruct
@@ -513,15 +513,13 @@ private:
         FloatStorage transformed_azim_pts = dr::Pi<Float> * (azim_pts + 1.0f);
         FloatStorage transformed_zenith_pts = dr::InvFourPi<Float> * (zenith_pts + 1.0f);
 
-        // To perform the quadrature, we loop and gather each azimuth
-        //for (int i = 0; i < 48; ++i) {
-        //    auto gather_mask = Mask(true);
-        //    Float azimuth = dr::gather<Float>(transformed_azim_pts, UInt32(i));
-        //    Log(Warn, "Azimuth: %f", azimuth); 
-        // }
+        // Doing 24 iterations (over the zeniths) is more performant than 48 (over the azimuths)
+        for (int i = 0; i < 24; i++) {
+            // Gather the current zenith
+            FloatStorage zenith = dr::gather<FloatStorage>(transformed_zenith_pts, UInt32(i));
 
-        // Log the type of the transformed azimuth points
-        Log(Warn, "Transformed Azim: %s", transformed_azim_pts);
+            Log(Warn, "Can I compile?");
+        }
         */
     
         return 0.0f;
