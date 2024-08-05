@@ -1,4 +1,4 @@
-q#include <mitsuba/core/math.h>
+#include <mitsuba/core/math.h>
 
 NAMESPACE_BEGIN(mitsuba)
 NAMESPACE_BEGIN(quad)

@@ -8,6 +8,8 @@
 #include <mitsuba/render/texture.h>
 #include <drjit/dynamic.h>
 
+#include <typeinfo> // For typeid
+
 NAMESPACE_BEGIN(mitsuba)
 
 // Header content - Potentially move somewhere else later
@@ -18,6 +20,10 @@ template<typename Float, typename Spectrum>
 class OceanProperties {
 public:
     MI_IMPORT_TYPES()
+
+    using AzimuthStorage = dr::Array<ScalarFloat, 48>;
+    using ZenithStorage = dr::Array<ScalarFloat, 24>;
+    using Value = dr::Array<ScalarFloat, 1>;
 
     OceanProperties() {
         // Effective reflectance of whitecaps (Whitlock et al. 1982)
@@ -136,24 +142,27 @@ public:
                                                                     0.948072872705384, 0.9422679803838081, 0.9357601370709014, 0.9295328947161291 };
 
         // Initialize the vectors with azimuth/zenith points/weights
-        m_azim_pts = dr::Array<float, 48>(  -0.99877101f, -0.99353017f, -0.98412458f, -0.97059159f, -0.9529877f ,
-                                            -0.93138669f, -0.90587914f, -0.87657202f, -0.84358826f, -0.8070662f ,
-                                            -0.76715903f, -0.72403413f, -0.67787238f, -0.6288674f , -0.57722473f,
-                                            -0.52316097f, -0.4669029f , -0.40868648f, -0.34875589f, -0.28736249f,
-                                            -0.22476379f, -0.16122236f, -0.0970047f , -0.03238017f,  0.03238017f,
-                                            0.0970047f  ,  0.16122236f,  0.22476379f,  0.28736249f,  0.34875589f,
-                                            0.40868648f ,  0.4669029f ,  0.52316097f,  0.57722473f,  0.6288674f ,
-                                            0.67787238f ,  0.72403413f,  0.76715903f,  0.8070662f ,  0.84358826f,
-                                            0.87657202f ,  0.90587914f,  0.93138669f,  0.9529877f ,  0.97059159f,
-                                            0.98412458f ,  0.99353017f,  0.99877101f);
+        m_azim_pts = dr::Array<ScalarFloat, 48>(  3.86099459e-03f, 2.03255633e-02f, 4.98740911e-02f, 9.23892368e-02f,
+                                            1.47693486e-01f, 2.15555068e-01f, 2.95689413e-01f, 3.87760434e-01f,
+                                            4.91381968e-01f, 6.06119396e-01f, 7.31491473e-01f, 8.66972347e-01f,
+                                            1.01199377e+00f, 1.16594746e+00f, 1.32818769e+00f, 1.49803398e+00f,
+                                            1.67477392e+00f, 1.85766620e+00f, 2.04594372e+00f, 2.23881677e+00f,
+                                            2.43547638e+00f, 2.63509768e+00f, 2.83684340e+00f, 3.03986735e+00f,
+                                            3.24331796e+00f, 3.44634190e+00f, 3.64808762e+00f, 3.84770893e+00f,
+                                            4.04436853e+00f, 4.23724158e+00f, 4.42551910e+00f, 4.60841139e+00f,
+                                            4.78515133e+00f, 4.95499761e+00f, 5.11723785e+00f, 5.27119154e+00f,
+                                            5.41621296e+00f, 5.55169383e+00f, 5.67706591e+00f, 5.79180334e+00f,
+                                            5.89542487e+00f, 5.98749589e+00f, 6.06763024e+00f, 6.13549182e+00f,
+                                            6.19079607e+00f, 6.23331122e+00f, 6.26285974e+00f, 6.27932431e+00f);
 
-        m_zenith_pts = dr::Array<float, 24>(-0.99518722f, -0.97472856f, -0.93827455f, -0.88641553f, -0.82000199f,
-                                            -0.74012419f, -0.64809365f, -0.54542147f, -0.43379351f, -0.31504268f,
-                                            -0.19111887f, -0.06405689f,  0.06405689f,  0.19111887f,  0.31504268f,
-                                            0.43379351f ,  0.54542147f,  0.64809365f,  0.74012419f,  0.82000199f,
-                                            0.88641553f ,  0.93827455f,  0.97472856f,  0.99518722f);
+        m_zenith_pts = dr::Array<ScalarFloat, 24>(0.00038299f, 0.00201104f, 0.00491196f, 0.00903877f, 
+                                            0.01432379f, 0.02068026f, 0.02800382f, 0.03617421f, 
+                                            0.04505728f, 0.05450717f, 0.06436872f, 0.07447999f, 
+                                            0.08467496f, 0.09478623f, 0.10464777f, 0.11409766f, 
+                                            0.12298073f, 0.13115113f, 0.13847468f, 0.14483116f,
+                                            0.15011618f, 0.15424299f, 0.15714391f, 0.15877195f);
 
-        m_azim_weights = dr::Array<float, 48>(  0.00315335f, 0.00732755f, 0.01147723f, 0.01557932f, 0.01961616f,
+        m_azim_weights = dr::Array<ScalarFloat, 48>(  0.00315335f, 0.00732755f, 0.01147723f, 0.01557932f, 0.01961616f,
                                                 0.02357076f, 0.02742651f, 0.03116723f, 0.03477722f, 0.03824135f,
                                                 0.04154508f, 0.04467456f, 0.04761666f, 0.05035904f, 0.05289019f,
                                                 0.0551995f , 0.05727729f, 0.05911484f, 0.06070444f, 0.06203942f,
@@ -164,42 +173,42 @@ public:
                                                 0.03116723f, 0.02742651f, 0.02357076f, 0.01961616f, 0.01557932f,
                                                 0.01147723f, 0.00732755f, 0.00315335f);
 
-        m_zenith_weights = dr::Array<float, 24>(0.01234123f, 0.02853139f, 0.04427744f, 0.05929858f, 0.07334648f,
+        m_zenith_weights = dr::Array<ScalarFloat, 24>(0.01234123f, 0.02853139f, 0.04427744f, 0.05929858f, 0.07334648f,
                                                 0.08619016f, 0.09761865f, 0.10744427f, 0.11550567f, 0.12167047f,
                                                 0.12583746f, 0.1279382f , 0.1279382f , 0.12583746f, 0.12167047f,
                                                 0.11550567f, 0.10744427f, 0.09761865f, 0.08619016f, 0.07334648f,
                                                 0.05929858f, 0.04427744f, 0.02853139f, 0.01234123f);
  
         // Construct distributions from the provided data sets
-        m_effective_reflectance = IrregularContinuousDistribution<Float>(
+        m_effective_reflectance = IrregularContinuousDistribution<ScalarFloat>(
             wc_wavelengths.data(), wc_data.data(), wc_data.size()
         );
 
-        m_ior_real = IrregularContinuousDistribution<Float>(
+        m_ior_real = IrregularContinuousDistribution<ScalarFloat>(
             ior_wavelengths.data(), ior_real_data.data(), ior_real_data.size()
         );
 
-        m_ior_imag = IrregularContinuousDistribution<Float>(
+        m_ior_imag = IrregularContinuousDistribution<ScalarFloat>(
             ior_wavelengths.data(), ior_cplx_data.data(), ior_cplx_data.size()
         );
 
-        m_attn_k = IrregularContinuousDistribution<Float>(
+        m_attn_k = IrregularContinuousDistribution<ScalarFloat>(
             attn_wavelengths.data(), attn_k.data(), attn_k.size()
         );
 
-        m_attn_chi = IrregularContinuousDistribution<Float>(
+        m_attn_chi = IrregularContinuousDistribution<ScalarFloat>(
             attn_wavelengths.data(), attn_chi.data(), attn_chi.size()
         );
 
-        m_attn_e = IrregularContinuousDistribution<Float>(
+        m_attn_e = IrregularContinuousDistribution<ScalarFloat>(
             attn_wavelengths.data(), attn_e.data(), attn_e.size()
         );
 
-        m_molecular_scatter_coeffs = IrregularContinuousDistribution<Float>(
+        m_molecular_scatter_coeffs = IrregularContinuousDistribution<ScalarFloat>(
             attn_wavelengths.data(), molecular_scatter_coeffs.data(), molecular_scatter_coeffs.size()
         );
 
-        m_molecular_scatter_coeffs_6s = IrregularContinuousDistribution<Float>(
+        m_molecular_scatter_coeffs_6s = IrregularContinuousDistribution<ScalarFloat>(
             attn_wavelengths.data(), molecular_scatter_coeffs_6s.data(), molecular_scatter_coeffs_6s.size()
         );
 
@@ -213,35 +222,35 @@ public:
 
     }
 
-    Float effective_reflectance(const Float &wavelength) const {
+    ScalarFloat effective_reflectance(const ScalarFloat &wavelength) const {
         return m_effective_reflectance.eval_pdf(wavelength);
     }
 
-    Float ior_real(const Float &wavelength) const {
+    ScalarFloat ior_real(const ScalarFloat &wavelength) const {
         return m_ior_real.eval_pdf(wavelength);
     }
 
-    Float ior_cplx(const Float &wavelength) const {
+    ScalarFloat ior_cplx(const ScalarFloat &wavelength) const {
         return m_ior_imag.eval_pdf(wavelength);
     }
 
-    Float attn_k(const Float &wavelength) const {
+    ScalarFloat attn_k(const ScalarFloat &wavelength) const {
         return m_attn_k.eval_pdf(wavelength);
     }
 
-    Float attn_chi(const Float &wavelength) const {
+    ScalarFloat attn_chi(const ScalarFloat &wavelength) const {
         return m_attn_chi.eval_pdf(wavelength);
     }
 
-    Float attn_e(const Float &wavelength) const {
+    ScalarFloat attn_e(const ScalarFloat &wavelength) const {
         return m_attn_e.eval_pdf(wavelength);
     }
 
-    Float molecular_scatter_coeff(const Float &wavelength) const {
+    ScalarFloat molecular_scatter_coeff(const ScalarFloat &wavelength) const {
         return m_molecular_scatter_coeffs.eval_pdf(wavelength);
     }
 
-    Float molecular_scatter_coeff_6s(const Float &wavelength) const {
+    ScalarFloat molecular_scatter_coeff_6s(const ScalarFloat &wavelength) const {
         return m_molecular_scatter_coeffs_6s.eval_pdf(wavelength);
     }
 
@@ -253,31 +262,63 @@ public:
         return m_downwelling_transmittance.eval_pdf(wavelength);
     }
 
+    Value azimuth_point(const Int32 &idx) const {
+        return dr::gather<Value>(m_azim_pts, idx);
+    }
+
+    Value zenith_point(const Int32 &idx) const {
+        return dr::gather<Value>(m_zenith_pts, idx);
+    }
+
+    Value azimuth_weight(const Int32 &idx) const {
+        return dr::gather<Value>(m_azim_weights, idx);
+    }
+
+    Value zenith_weight(const Int32 &idx) const {
+        return dr::gather<Value>(m_zenith_weights, idx);
+    }
+
+    AzimuthStorage azimuth_points() const {
+        return m_azim_pts;
+    }
+
+    ZenithStorage zenith_points() const {
+        return m_zenith_pts;
+    }
+
+    AzimuthStorage azimuth_weights() const {
+        return m_azim_weights;
+    }
+
+    ZenithStorage zenith_weights() const {
+        return m_zenith_weights;
+    }
+
 private:
     // Effective reflectance of whitecaps
-    IrregularContinuousDistribution<Float> m_effective_reflectance;
+    IrregularContinuousDistribution<ScalarFloat> m_effective_reflectance;
 
     // Real/Complex IOR of water (Hale & Querry 1973)
-    IrregularContinuousDistribution<Float> m_ior_real;
-    IrregularContinuousDistribution<Float> m_ior_imag;
+    IrregularContinuousDistribution<ScalarFloat> m_ior_real;
+    IrregularContinuousDistribution<ScalarFloat> m_ior_imag;
 
     // Water scattering and attenuation coefficients (Morel 1988)
-    IrregularContinuousDistribution<Float> m_attn_k;
-    IrregularContinuousDistribution<Float> m_attn_chi;
-    IrregularContinuousDistribution<Float> m_attn_e;
-    IrregularContinuousDistribution<Float> m_molecular_scatter_coeffs;
-    IrregularContinuousDistribution<Float> m_molecular_scatter_coeffs_6s;
+    IrregularContinuousDistribution<ScalarFloat> m_attn_k;
+    IrregularContinuousDistribution<ScalarFloat> m_attn_chi;
+    IrregularContinuousDistribution<ScalarFloat> m_attn_e;
+    IrregularContinuousDistribution<ScalarFloat> m_molecular_scatter_coeffs;
+    IrregularContinuousDistribution<ScalarFloat> m_molecular_scatter_coeffs_6s;
 
     // Upwelling and downwelling transmittance data
     IrregularContinuousDistribution<Float> m_upwelling_transmittance;
     IrregularContinuousDistribution<Float> m_downwelling_transmittance;
 
     // Azimuth/Zenith points and weights for quadrature
-    dr::Array<float, 48> m_azim_pts;
-    dr::Array<float, 24> m_zenith_pts;
+    AzimuthStorage m_azim_pts;
+    ZenithStorage m_zenith_pts;
     
-    dr::Array<float, 48> m_azim_weights;
-    dr::Array<float, 24> m_zenith_weights;
+    AzimuthStorage m_azim_weights;
+    ZenithStorage m_zenith_weights;
 };
 
 template<typename Float, typename Spectrum>
@@ -285,176 +326,51 @@ class OceanUtilities {
 public:
     MI_IMPORT_TYPES()
 
-    using FloatStorage = dr::DynamicArray<Float>;
+    using AzimuthStorage = dr::Array<ScalarFloat, 48>;
+    using ZenithStorage = dr::Array<ScalarFloat, 24>;
+    using Value = dr::Array<ScalarFloat, 1>;
 
     OceanUtilities() : m_ocean_props() { }
 
-    Float eval_whitecap_coverage(const Float &wind_speed) {
+    ScalarFloat eval_whitecap_coverage(const ScalarFloat &wind_speed) {
         return dr::clamp(m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda), 0.0f, 1.0f);
     }
 
-    Float eval_whitecaps(const Float &wavelength, const Float &wind_speed) {
+    ScalarFloat eval_whitecaps(const ScalarFloat &wavelength, const ScalarFloat &wind_speed) {
         // Compute the fractional coverage of whitecaps
-        Float coverage = eval_whitecap_coverage(wind_speed);
+        ScalarFloat coverage = eval_whitecap_coverage(wind_speed);
 
         // Old
-        Float eff_reflectance = m_ocean_props.effective_reflectance(wavelength);
+        ScalarFloat eff_reflectance = m_ocean_props.effective_reflectance(wavelength);
 
         // Compute the whitecap reflectance
-        Float whitecap_reflectance = coverage * eff_reflectance;
+        ScalarFloat whitecap_reflectance = coverage * eff_reflectance;
 
         return whitecap_reflectance;
     }
 
-    Float eval_cox_munk(const Float &phi_w, 
-                        const Float &z_x, const Float &z_y,
-                        const Float &wind_speed) const {
-        Float sigma_c = 0.003f + 0.00192f * wind_speed;
-        Float sigma_u = 0.00316f * wind_speed;
-
-        Float c_21 = 0.01f - 0.0086f * wind_speed;
-        Float c_03 = 0.04f - 0.033f * wind_speed;
-
-        Float xe = (safe_cos(phi_w) * z_x + safe_sin(phi_w) * z_y) / dr::sqrt(sigma_c);
-        Float xn = (-safe_sin(phi_w) * z_x + safe_cos(phi_w) * z_y) / dr::sqrt(sigma_u);
-
-        Float xe2 = xe * xe;
-        Float xn2 = xn * xn;
-        
-        Float coef = 1.0f - (c_21 / 2.0f) * (xe2 - 1.0f) * xn - (c_03 / 6.0f) * (xn2 - 3.0f) * xn;
-        coef = coef + (m_c_40 / 24.0f) * (xe2 * xe2 - 6.0f * xe2 + 3.0f);
-        coef = coef + (m_c_04 / 24.0f) * (xn2 * xn2 - 6.0f * xn2 + 3.0f);
-        coef = coef + (m_c_22 / 4.0f) * (xe2 - 1.0f) * (xn2 - 1.0f);
-        
-        Float prob = coef / 2.0f / dr::Pi<Float> / dr::sqrt(sigma_u) / dr::sqrt(sigma_c) * dr::exp(-(xe2 + xn2) / 2.0f);
-        return prob;
-    }
-
-    Float eval_fresnel(const Float &n_real, const Float &n_imag,
-                       const Float &coschi, const Float &sinchi) const {
-        Float s = (n_real * n_real) - (n_imag * n_imag) - (sinchi * sinchi);
-        
-        Float a_1 = dr::abs(s);
-        Float a_2 = dr::sqrt(dr::sqr(s) + 4.0f * n_real * n_real * n_imag * n_imag);
-
-        Float u = dr::sqrt(0.5f * dr::abs(a_1 + a_2));
-        Float v = dr::sqrt(0.5f * dr::abs(a_2 - a_1));
-
-        Float b_1 = (n_real * n_real - n_imag * n_imag) * coschi;
-        Float b_2 = 2 * n_real * n_imag * coschi;
-
-        Float right_squared = (dr::sqr(coschi - u) + v * v) / (dr::sqr(coschi + u) + v * v);
-        Float left_squared = (dr::sqr(b_1 - u) + dr::sqr(b_2 + v)) / (dr::sqr(b_1 + u) + dr::sqr(b_2 - v));
-        Float R = (right_squared + left_squared) * 0.5f;
-
-        return R;
-    }
-
-    Float eval_glint(const Float &wavelength, 
+    Float eval_glint(const ScalarFloat &wavelength, 
                      const Vector3f &wi, const Vector3f &wo, 
-                     const Float &wind_direction, const Float &wind_speed,
-                     const Float &chlorinity) {
+                     const ScalarFloat &wind_direction, const ScalarFloat &wind_speed,
+                     const ScalarFloat &chlorinity) {
         // Transform directions into azimuthal and zenithal angles
         Float theta_i = dr::acos(wi.z());
         Float theta_o = dr::acos(wo.z());
         Float phi_i = dr::atan2(wi.y(), wi.x());
         Float phi_o = dr::atan2(wo.y(), wo.x());
 
-        return eval_glint_internal(wavelength, theta_i, theta_o, phi_i, phi_o, wind_direction, wind_speed, chlorinity);
+        return eval_sun_glint<Float>(wavelength, theta_i, theta_o, phi_i, phi_o, wind_direction, wind_speed, chlorinity);
     }
 
-    Float eval_glint_internal(const Float &wavelength, 
-                              const Float &theta_i, const Float &theta_o,
-                              const Float &phi_i, const Float &phi_o,
-                              const Float &wind_direction, const Float &wind_speed,
-                              const Float &chlorinity) {
-        // Implementation analog to 6SV
-        Float phi = phi_i - phi_o;
-        Float phi_w = phi_i - wind_direction;
-
-        // TODO: Make sure to only consider angles between ]0, pi/2[
-        Float c_i = safe_cos(theta_i);
-        Float c_o = safe_cos(theta_o);
-        Float s_i = safe_sin(theta_i);
-        Float s_o = safe_sin(theta_o);
-
-        Float z_x = (-s_o * safe_sin(phi)) / (c_i + c_o);
-        Float z_y = (s_i + s_o * safe_cos(phi)) / (c_i + c_o);
-
-        // Tilt angle (rad)
-        Float tan_tilt = dr::sqrt(z_x * z_x + z_y * z_y);
-        Float tilt = dr::atan(tan_tilt);
-
-        // Cox-Munk specular probability
-        Float specular_prob = eval_cox_munk(phi_w, z_x, z_y, wind_speed);
-        auto mask = Mask(specular_prob < 0.0f);
-        specular_prob = dr::select(mask, 0.0f, specular_prob);
-
-        Float cos_2_chi = c_o * c_i + s_o * s_i * dr::cos(phi);
-        auto ge_1 = Mask(cos_2_chi > 1.0f);
-        auto le_1 = Mask(cos_2_chi < -1.0f);
-        
-        cos_2_chi = dr::select(ge_1, 0.999999999f, cos_2_chi);
-        cos_2_chi = dr::select(le_1, -0.999999999f, cos_2_chi);
-        
-        Float coschi = dr::sqrt(0.5f * (1.0f + cos_2_chi));
-        Float sinchi = dr::sqrt(0.5f * (1.0f - cos_2_chi));
-
-        auto ge_coschi = Mask(coschi > 1.0f);
-        auto le_coschi = Mask(coschi < -1.0f);
-        auto ge_sinchi = Mask(sinchi > 1.0f);
-        auto le_sinchi = Mask(sinchi < -1.0f);
-
-        coschi = dr::select(ge_coschi, 0.999999999f, coschi);
-        coschi = dr::select(le_coschi, -0.999999999f, coschi);
-        sinchi = dr::select(ge_sinchi, 0.999999999f, sinchi);
-        sinchi = dr::select(le_sinchi, -0.999999999f, sinchi);
-
-        // Fresnel coefficient
-        Float n_real = m_ocean_props.ior_real(wavelength) + friedman_sverdrup(chlorinity);
-        Float n_imag = m_ocean_props.ior_cplx(wavelength);
-        Float fresnel_coeff = eval_fresnel(n_real, n_imag, coschi, sinchi);
-        
-        // Compute reflectance
-        Float num = m_pi * fresnel_coeff * specular_prob;
-        Float denom = 4.0f * c_i * c_o * dr::pow(safe_cos(tilt), 4.0f);
-
-        return num / denom;
-    }
-
-    Float eval_underlight(const Float &wavelength, 
+    Float eval_underlight(const ScalarFloat &wavelength, 
                           const Vector3f &wi, const Vector3f &wo,
-                          const Float &chlorinity, const Float &pigmentation) {
+                          const ScalarFloat &wind_direction, const ScalarFloat &wind_speed,
+                          const ScalarFloat &chlorinity, const ScalarFloat &pigmentation) {
         // Transform directions into azimuthal and zenithal angles
         Float theta_i = dr::acos(wi.z());
         Float theta_o = dr::acos(wo.z());
 
-        return eval_underlight(wavelength, theta_i, theta_o, chlorinity, pigmentation);
-    }
-
-    Float eval_underlight(const Float &wavelength, 
-                          const Float &theta_i, const Float &theta_o,
-                          const Float &chlorinity, const Float &pigmentation) {
-        // Analogue to 6SV, we return 0.0 if the wavelength is outside the range of [0.4, 0.7]
-        auto outside_range = Mask(wavelength < 0.4f || wavelength > 0.7f);
-
-        // Get IOR of water
-        Float n_real = m_ocean_props.ior_real(wavelength) + friedman_sverdrup(chlorinity);
-        Float n_imag = m_ocean_props.ior_cplx(wavelength);
-
-        // Compute r_omega
-        Float r_om = r_omega(wavelength, pigmentation);
-
-        // Upwelling and downwelling transmittance
-        Float t_u = upwelling_transmittance_lut(theta_o);
-        Float t_d = downwelling_transmittance_lut(theta_i);
-
-        downwelling_transmittance_quadrature(theta_i);
-
-        // Compute the underlight term
-        Float underlight = (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
-
-        return dr::select(outside_range, 0.0f, underlight);
+        return eval_underlight_angular(wavelength, theta_i, theta_o, wind_direction, wind_speed, chlorinity, pigmentation);
     }
 
 private:
@@ -465,8 +381,6 @@ private:
     ScalarFloat m_pi = dr::Pi<ScalarFloat>;
     ScalarFloat m_pi_half = m_pi / 2.0f;
     ScalarFloat m_pi_three_half = (3.0f * m_pi) / 2.0f;
-    ScalarFloat m_trig_eps_cos = 0.01745154894888401f;
-    ScalarFloat m_trig_eps_sin = 0.01745154894888401f;
 
     // Whitecap parameters
     ScalarFloat m_f_eff_base = 0.4f;
@@ -481,46 +395,178 @@ private:
     // Underlight parameters
     ScalarFloat m_underlight_alpha = 0.485f;
 
-    // "Safe" version of the cosine function
-    Float safe_cos(const Float &angle) const {
-        return dr::cos(angle);
+    template <typename Value>
+    Value eval_cox_munk(const Value &phi_w, 
+                        const Value &z_x, const Value &z_y,
+                        const ScalarFloat &wind_speed) const {
+        ScalarFloat sigma_c = 0.003f + 0.00192f * wind_speed;
+        ScalarFloat sigma_u = 0.00316f * wind_speed;
+
+        ScalarFloat c_21 = 0.01f - 0.0086f * wind_speed;
+        ScalarFloat c_03 = 0.04f - 0.033f * wind_speed;
+
+        Value xe = (dr::cos(phi_w) * z_x + dr::sin(phi_w) * z_y) / dr::sqrt(sigma_c);
+        Value xn = (-dr::sin(phi_w) * z_x + dr::cos(phi_w) * z_y) / dr::sqrt(sigma_u);
+
+        Value xe2 = xe * xe;
+        Value xn2 = xn * xn;
+        
+        Value coef = 1.0f - (c_21 / 2.0f) * (xe2 - 1.0f) * xn - (c_03 / 6.0f) * (xn2 - 3.0f) * xn;
+        coef = coef + (m_c_40 / 24.0f) * (xe2 * xe2 - 6.0f * xe2 + 3.0f);
+        coef = coef + (m_c_04 / 24.0f) * (xn2 * xn2 - 6.0f * xn2 + 3.0f);
+        coef = coef + (m_c_22 / 4.0f) * (xe2 - 1.0f) * (xn2 - 1.0f);
+        
+        Value prob = coef / 2.0f / dr::Pi<Value> / dr::sqrt(sigma_u) / dr::sqrt(sigma_c) * dr::exp(-(xe2 + xn2) / 2.0f);
+        return prob;
     }
 
-    // "Safe" version of the sine function
-    Float safe_sin(const Float &angle) const {
-        return dr::sin(angle);
+    template <typename Value>
+    Value eval_fresnel(const ScalarFloat &n_real, const ScalarFloat &n_imag,
+                       const Float &coschi, const Float &sinchi) const {
+        Value s = (n_real * n_real) - (n_imag * n_imag) - (sinchi * sinchi);
+        
+        Value a_1 = dr::abs(s);
+        Value a_2 = dr::sqrt(dr::sqr(s) + 4.0f * n_real * n_real * n_imag * n_imag);
+
+        Value u = dr::sqrt(0.5f * dr::abs(a_1 + a_2));
+        Value v = dr::sqrt(0.5f * dr::abs(a_2 - a_1));
+
+        Value b_1 = (n_real * n_real - n_imag * n_imag) * coschi;
+        Value b_2 = 2 * n_real * n_imag * coschi;
+
+        Value right_squared = (dr::sqr(coschi - u) + v * v) / (dr::sqr(coschi + u) + v * v);
+        Value left_squared = (dr::sqr(b_1 - u) + dr::sqr(b_2 + v)) / (dr::sqr(b_1 + u) + dr::sqr(b_2 - v));
+        Value R = (right_squared + left_squared) * 0.5f;
+
+        return R;
+    }
+
+    template <typename Value>
+    Value eval_sun_glint(const ScalarFloat &wavelength, 
+                         const Value &theta_i, const Value &theta_o,
+                         const Value &phi_i, const Value &phi_o,
+                         const ScalarFloat &wind_direction, const ScalarFloat &wind_speed,
+                         const ScalarFloat &chlorinity) {
+        // Implementation analog to 6SV
+        Value phi = phi_i - phi_o;
+        Value phi_w = phi_i - wind_direction;
+
+        Value c_i = dr::cos(theta_i);
+        Value c_o = dr::cos(theta_o);
+        Value s_i = dr::sin(theta_i);
+        Value s_o = dr::sin(theta_o);
+
+        Value z_x = (-s_o * dr::sin(phi)) / (c_i + c_o);
+        Value z_y = (s_i + s_o * dr::cos(phi)) / (c_i + c_o);
+
+        // Tilt angle (rad)
+        Value tan_tilt = dr::sqrt(z_x * z_x + z_y * z_y);
+        Value tilt = dr::atan(tan_tilt);
+
+        // Cox-Munk specular probability
+        Value specular_prob = eval_cox_munk<Value>(phi_w, z_x, z_y, wind_speed);
+        auto mask = Mask(specular_prob < 0.0f);
+        specular_prob = dr::select(mask, 0.0f, specular_prob);
+
+        Value cos_2_chi = c_o * c_i + s_o * s_i * dr::cos(phi);
+        auto ge_1 = Mask(cos_2_chi > 1.0f);
+        auto le_1 = Mask(cos_2_chi < -1.0f);
+        
+        cos_2_chi = dr::select(ge_1, 0.999999999f, cos_2_chi);
+        cos_2_chi = dr::select(le_1, -0.999999999f, cos_2_chi);
+        
+        Value coschi = dr::sqrt(0.5f * (1.0f + cos_2_chi));
+        Value sinchi = dr::sqrt(0.5f * (1.0f - cos_2_chi));
+
+        auto ge_coschi = Mask(coschi > 1.0f);
+        auto le_coschi = Mask(coschi < -1.0f);
+        auto ge_sinchi = Mask(sinchi > 1.0f);
+        auto le_sinchi = Mask(sinchi < -1.0f);
+
+        coschi = dr::select(ge_coschi, 0.999999999f, coschi);
+        coschi = dr::select(le_coschi, -0.999999999f, coschi);
+        sinchi = dr::select(ge_sinchi, 0.999999999f, sinchi);
+        sinchi = dr::select(le_sinchi, -0.999999999f, sinchi);
+
+        // Fresnel coefficient
+        ScalarFloat n_real = m_ocean_props.ior_real(wavelength) + friedman_sverdrup(chlorinity);
+        ScalarFloat n_imag = m_ocean_props.ior_cplx(wavelength);
+        Value fresnel_coeff = eval_fresnel<Value>(n_real, n_imag, coschi, sinchi);
+        
+        // Sun glint reflectance
+        Value num = m_pi * fresnel_coeff * specular_prob;
+        Value denom = 4.0f * c_i * c_o * dr::pow(dr::cos(tilt), 4.0f);
+
+        return num / denom;
+    }
+
+    Float eval_underlight_angular(const ScalarFloat &wavelength, 
+                          const Float &theta_i, const Float &theta_o,
+                          const ScalarFloat &wind_direction, const ScalarFloat &wind_speed,
+                          const ScalarFloat &chlorinity, const ScalarFloat &pigmentation) {
+        // Analogue to 6SV, we return 0.0 if the wavelength is outside the range of [0.4, 0.7]
+        auto outside_range = Mask(wavelength < 0.4f || wavelength > 0.7f);
+
+        // Get IOR of water
+        ScalarFloat n_real = m_ocean_props.ior_real(wavelength) + friedman_sverdrup(chlorinity);
+        ScalarFloat n_imag = m_ocean_props.ior_cplx(wavelength);
+
+        // Compute r_omega
+        ScalarFloat r_om = r_omega(wavelength, pigmentation);
+
+        // Upwelling and downwelling transmittance
+        Float t_u = upwelling_transmittance_lut(theta_o);
+        Float t_d = downwelling_transmittance_lut(theta_i);
+
+        downwelling_transmittance_quadrature(wavelength, theta_i, wind_direction, wind_speed, chlorinity);
+
+        // Compute the underlight term
+        Float underlight = (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
+
+        return dr::select(outside_range, 0.0f, underlight);
     }
 
     // Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
-    Float friedman_sverdrup(const Float &chlorinity) {
+    ScalarFloat friedman_sverdrup(const ScalarFloat &chlorinity) {
         return 0.00017492711f * (0.03f + 1.805f * chlorinity);
     }
 
-    Float downwelling_transmittance_quadrature(const Float &theta_i) {
-        // Compute quadrature points and weights
-        auto azimuth_quad = quad::gauss_legendre<FloatStorage>(48);
-        auto zenith_quad = quad::gauss_legendre<FloatStorage>(24);
+    Float downwelling_transmittance_quadrature(const ScalarFloat &wavelength, 
+                                               const ScalarFloat &theta_i,
+                                               const ScalarFloat &wind_direction, const ScalarFloat &wind_speed,
+                                               const ScalarFloat &chlorinity) {  
+        // Construct azimuth storage for wavelength and theta_i
+        AzimuthStorage theta_is = dr::Array<ScalarFloat, 48>(theta_i);
+        AzimuthStorage phi_is = dr::Array<ScalarFloat, 48>(0.0f);
 
-        /*
-        // Deconstruct
-        FloatStorage azim_pts = azimuth_quad.first;
-        FloatStorage azim_weights = azimuth_quad.second;
+        // Perform quadrature loop
+        for (int zenith_idx = 0; zenith_idx < 24; zenith_idx++) {
+            Value zenith = m_ocean_props.zenith_point(Int32(zenith_idx));
+            AzimuthStorage azimuths = m_ocean_props.azimuth_points();
 
-        FloatStorage zenith_pts = zenith_quad.first;
-        FloatStorage zenith_weights = zenith_quad.second;
+            Value zenith_weight = m_ocean_props.zenith_weight(Int32(zenith_idx));
+            AzimuthStorage azimuth_weights = m_ocean_props.azimuth_weights();
 
-        // Transform points
-        FloatStorage transformed_azim_pts = dr::Pi<Float> * (azim_pts + 1.0f);
-        FloatStorage transformed_zenith_pts = dr::InvFourPi<Float> * (zenith_pts + 1.0f);
+            // Access the zenith point and weight 
+            ScalarFloat zenith_f = zenith[0];
+            ScalarFloat zenith_weight_f = zenith_weight[0];
+            
+            // To obtain the final weight, we multiply the zenith weight with all azimuthal weights
+            AzimuthStorage final_weights = zenith_weight_f * azimuth_weights;
 
-        // Doing 24 iterations (over the zeniths) is more performant than 48 (over the azimuths)
-        for (int i = 0; i < 24; i++) {
-            // Gather the current zenith
-            FloatStorage zenith = dr::gather<FloatStorage>(transformed_zenith_pts, UInt32(i));
+            // Finally, we need an array of zeniths of length 48
+            AzimuthStorage zeniths = dr::Array<ScalarFloat, 48>(zenith_f);
 
-            Log(Warn, "Can I compile?");
+            // Evaluate the glint term for all azimuthal points and the current zenith point
+            AzimuthStorage glint = eval_sun_glint<AzimuthStorage>(wavelength, theta_is, zeniths, phi_is, azimuths, wind_direction, wind_speed, chlorinity);
+
+            Log(Warn, "Glint: %s", glint);
+
+            // Multiply by the weights
+            //AzimuthStorage weighted_glint = final_weights * glint;
+
+            //Log(Warn, "Weighted glint: %s", weighted_glint);
         }
-        */
     
         return 0.0f;
     }
@@ -557,30 +603,30 @@ private:
         return m_ocean_props.upwelling_transmittance(theta_o);
     }
 
-    Float r_omega(const Float &wavelength,
-                  const Float &pigmentation) {
-        Float wavelength_nm = wavelength * 1000.0f;
-        Float pigment_log = dr::log(pigmentation) / dr::log(10.0f);
+    ScalarFloat r_omega(const ScalarFloat &wavelength,
+                        const ScalarFloat &pigmentation) {
+        ScalarFloat wavelength_nm = wavelength * 1000.0f;
+        ScalarFloat pigment_log = dr::log(pigmentation) / dr::log(10.0f);
 
         // Backscattering coefficient
-        Float molecular_scatter_coeff = m_ocean_props.molecular_scatter_coeff_6s(wavelength_nm);
-        Float scattering_coeff = 0.30f * dr::pow(pigmentation, 0.62);
-        Float backscatter_ratio = 0.002f + 0.02f * (0.5f - 0.25f * pigment_log) * (550.0 / wavelength_nm);
-        Float backscatter_coeff = 0.5f * molecular_scatter_coeff + scattering_coeff * backscatter_ratio;
+        ScalarFloat molecular_scatter_coeff = m_ocean_props.molecular_scatter_coeff_6s(wavelength_nm);
+        ScalarFloat scattering_coeff = 0.30f * dr::pow(pigmentation, 0.62);
+        ScalarFloat backscatter_ratio = 0.002f + 0.02f * (0.5f - 0.25f * pigment_log) * (550.0 / wavelength_nm);
+        ScalarFloat backscatter_coeff = 0.5f * molecular_scatter_coeff + scattering_coeff * backscatter_ratio;
 
         // (Diffuse) attenuation coefficient
-        Float k = m_ocean_props.attn_k(wavelength_nm);
-        Float chi = m_ocean_props.attn_chi(wavelength_nm);
-        Float e = m_ocean_props.attn_e(wavelength_nm);
-        Float attn_coeff = k + chi * dr::pow(pigmentation, e);
+        ScalarFloat k = m_ocean_props.attn_k(wavelength_nm);
+        ScalarFloat chi = m_ocean_props.attn_chi(wavelength_nm);
+        ScalarFloat e = m_ocean_props.attn_e(wavelength_nm);
+        ScalarFloat attn_coeff = k + chi * dr::pow(pigmentation, e);
 
         // If any of the coefficients is zero, we return zero
         if (backscatter_coeff == 0.0f || attn_coeff == 0.0f)
             return 0.0f;
 
         // Iterative computation of the reflectance
-        Float u = 0.75f;
-        Float r_omega = 0.33f * backscatter_coeff / u / attn_coeff;
+        ScalarFloat u = 0.75f;
+        ScalarFloat r_omega = 0.33f * backscatter_coeff / u / attn_coeff;
 
         bool converged = false;
         while (!converged) {
@@ -588,14 +634,16 @@ private:
             u = (0.9f * (1.0f - r_omega)) / (1.0f + 2.25f * r_omega);
 
             // Update reflectance
-            Float r_omega_new = 0.33f * backscatter_coeff / (u * attn_coeff);
+            ScalarFloat r_omega_new = 0.33f * backscatter_coeff / (u * attn_coeff);
 
             // Create a mask that marks the converged values
-            auto convergence_mask = Mask(dr::abs((r_omega_new - r_omega) / r_omega_new) < 0.0001f);
-            converged = dr::all(convergence_mask);
+            if (dr::abs((r_omega_new - r_omega) / r_omega_new) < 0.0001f) {
+                converged = true;
+                break;
+            }
 
             // Update reflectance ONLY for non-converged values
-            r_omega = dr::select(convergence_mask, r_omega, r_omega_new);
+            r_omega = r_omega_new;
         }
 
         return r_omega;
@@ -649,7 +697,7 @@ public:
     }
 
     Float eval_underlight(const Vector3f &wi, const Vector3f &wo) const {
-        return m_ocean_utils->eval_underlight(m_wavelength, wi, wo, m_chlorinity, m_pigmentation);
+        return m_ocean_utils->eval_underlight(m_wavelength, wi, wo, m_wind_direction, m_wind_speed, m_chlorinity, m_pigmentation);
     }
 
     Float eval_ocean(const Vector3f &wi, const Vector3f &wo) const {
