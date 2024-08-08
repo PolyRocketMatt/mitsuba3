@@ -8,14 +8,12 @@
 #include <mitsuba/render/texture.h>
 #include <drjit/dynamic.h>
 
-#include <typeinfo> // For typeid
-
 NAMESPACE_BEGIN(mitsuba)
 
 #define AZIMUTH_QUADRATURE_PTS 16
 #define ZENITH_QUADRATURE_PTS 8
 
-// Header content - Potentially move somewhere else later
+// Header content - THIS CAN BE MOVED IF NECESSARY
 #ifndef OCEAN_PROPS
 #define OCEAN_PROPS
 
@@ -487,6 +485,19 @@ private:
     // Underlight parameters
     const ScalarFloat m_underlight_alpha = 0.485f;
 
+    /**
+     * @brief Evaluate the Cox-Munk distribution.
+     * 
+     * Evaluates the Cox-Munk distribution at the given relative wind direction,
+     * x and y components of the sensor/emitter direction, and wind speed. The distribution
+     * is computed using the Cox-Munk model.
+     * 
+     * @param phi_w The relative wind direction.
+     * @param z_x The x component of the sensor/emitter direction.
+     * @param z_y The y component of the sensor/emitter direction.
+     * @param wind_speed The wind speed at which to evaluate the distribution.
+     * @return Value The probability of the Cox-Munk distribution.
+     */
     template <typename Value>
     Value eval_cox_munk(const Value &phi_w, 
                         const Value &z_x, const Value &z_y,
@@ -512,6 +523,19 @@ private:
         return prob;
     }
 
+    /**
+     * @brief Evaluate the Fresnel coefficient.
+     * 
+     * Evaluates the Fresnel coefficient at the given real and imaginary parts of the
+     * index of refraction, and relevant geometry terms derived from the incoming and
+     * outgoing directions. The coefficient is computed using the Fresnel equations.
+     * 
+     * @param n_real The real part of the index of refraction.
+     * @param n_imag The imaginary part of the index of refraction.
+     * @param coschi The cosine of the geometry term.
+     * @param sinchi The sine of the geometry term.
+     * @return Value The Fresnel coefficient.
+     */
     template <typename Value>
     Value eval_fresnel(const ScalarFloat &n_real, const ScalarFloat &n_imag,
                        const Float &coschi, const Float &sinchi) const {
@@ -533,6 +557,25 @@ private:
         return R;
     }
 
+    /**
+     * @brief Evaluate the sun glint reflectance.
+     * 
+     * Evaluates the sun glint reflectance at the given wavelength, incident and outgoing
+     * angles, relative azimuthal angle for ingoing and outgoing directions, relative azimuthal 
+     * angle for wind direction and wind speed, and chlorinity. The reflectance is computed
+     * using the Cox-Munk distribution, the Fresnel equations, and relative tilt of the
+     * oceanic surface.
+     * 
+     * @param wavelength The wavelength at which to evaluate the reflectance.
+     * @param theta_i The incident zenith angle.
+     * @param theta_o The outgoing zenith angle.
+     * @param phi The relative azimuthal angle.
+     * @param phi_w The relative azimuthal angle for wind direction.
+     * @param wind_speed The wind speed at which to evaluate the reflectance.
+     * @param chlorinity The chlorinity of the water.
+     * @param invert_real Whether to invert the real part of the IOR.
+     * @return Value The sun glint reflectance.
+     */
     template <typename Value>
     Value eval_sun_glint(const ScalarFloat &wavelength, 
                          const Value &theta_i, const Value &theta_o,
@@ -597,6 +640,23 @@ private:
         return num / denom;
     }
 
+    /**
+     * @brief Evaluate the underlight reflectance.
+     * 
+     * Evaluates the underlight reflectance at the given wavelength, incident and outgoing
+     * angles, relative azimuthal angle for wind direction, wind speed, chlorinity, and pigmentation.
+     * The reflectance is computed by performing two quadratures to compute both upwelling and down-
+     * welling transmittance, attenuted with the ratio of upwell to downwelling irradiance.
+     * 
+     * @param wavelength The wavelength at which to evaluate the reflectance.
+     * @param theta_i The incident zenith angle.
+     * @param theta_o The outgoing zenith angle.
+     * @param phi_w The relative azimuthal angle for wind direction.
+     * @param wind_speed The wind speed at which to evaluate the reflectance.
+     * @param chlorinity The chlorinity of the water.
+     * @param pigmentation The pigmentation of the water.
+     * @return Value The underlight reflectance.
+     */
     Float eval_underlight_angular(const ScalarFloat &wavelength, 
                           const Float &theta_i, const Float &theta_o,
                           const Float &phi_w, const ScalarFloat &wind_speed,
@@ -623,11 +683,36 @@ private:
         return dr::select(outside_range, 0.0f, underlight);
     }
 
-    // Correction to the IOR of water according to Friedman (1969) and Sverdrup (1942)
+    /**
+     * @brief Compute the correction to the IOR of water.
+     * 
+     * Computes the correction to the index of refraction of water according to the
+     * formulas provided by Friedman (1969) and Sverdrup (1942). The correction is
+     * computed as a function of the chlorinity of the water.
+     * 
+     * @param chlorinity The chlorinity of the water.
+     * @return ScalarFloat The correction to the index of refraction.
+     */
     ScalarFloat friedman_sverdrup(const ScalarFloat &chlorinity) {
         return 0.00017492711f * (0.03f + 1.805f * chlorinity);
     }
 
+    /**
+     * @brief Compute the upwelling transmittance.
+     * 
+     * Computes the upwelling transmittance at the given wavelength, real part of the index of refraction,
+     * outgoing zenith angle, relative azimuthal angle for wind direction, wind speed, and chlorinity. The
+     * transmittance is computed by performing a quadrature over the hemisphere which evaluates the sun 
+     * glint reflectance at each quadrature point.
+     * 
+     * @param wavelength The wavelength at which to evaluate the transmittance.
+     * @param n_real The real part of the index of refraction.
+     * @param theta_o The outgoing zenith angle.
+     * @param phi_w The relative azimuthal angle for wind direction.
+     * @param wind_speed The wind speed at which to evaluate the transmittance.
+     * @param chlorinity The chlorinity of the water.
+     * @return Float The upwelling transmittance.
+     */
     Float upwelling_transmittance(const ScalarFloat &wavelength, 
                                   const ScalarFloat &n_real,
                                   const Float &theta_o,
@@ -669,6 +754,21 @@ private:
         return 1.0f - (tdv / summ);
     }
 
+    /**
+     * @brief Compute the downwelling transmittance.
+     * 
+     * Computes the downwelling transmittance at the given wavelength, incident zenith angle,
+     * relative azimuthal angle for wind direction, wind speed, and chlorinity. The transmittance
+     * is computed by performing a quadrature over the hemisphere which evaluates the sun glint
+     * reflectance at each quadrature point.
+     * 
+     * @param wavelength The wavelength at which to evaluate the transmittance.
+     * @param theta_i The incident zenith angle.
+     * @param phi_w The relative azimuthal angle for wind direction.
+     * @param wind_speed The wind speed at which to evaluate the transmittance.
+     * @param chlorinity The chlorinity of the water.
+     * @return Float The downwelling transmittance.
+     */
     Float downwelling_transmittance(const ScalarFloat &wavelength, 
                                     const Float &theta_i,
                                     const Float &phi_w, const ScalarFloat &wind_speed,
@@ -704,6 +804,17 @@ private:
         return 1.0f - (tds / summ);
     }
 
+    /** 
+     * @brief Compute the ratio of upwelling to downwelling irradiance.
+     * 
+     * Computes the ratio of upwelling to downwelling irradiance at the given wavelength
+     * and pigmentation. The ratio is computed by performing an iterative computation.
+     * 
+     * @param wavelength The wavelength at which to evaluate the ratio.
+     * @param pigmentation The pigmentation of the water.
+     * @return ScalarFloat The ratio of upwelling to downwelling irradiance.
+     * @note This function is only defined for wavelengths in the range [0.4, 0.7] nm.
+     */
     ScalarFloat r_omega(const ScalarFloat &wavelength,
                         const ScalarFloat &pigmentation) {
         ScalarFloat wavelength_nm = wavelength * 1000.0f;
@@ -754,16 +865,101 @@ private:
 
 #endif // OCEAN_PROPS
 
+/**!
+
+.. _plugin-bsdf-oceanic_legacy:
+
+(Legacy 6S) Oceanic reflection model (:monosp:`oceanic-legacy`)
+----------------------------------------------------
+
+.. pluginparameters::
+
+ * - component
+   - |int|
+   - Specifies which component of the oceanic reflection model to evaluate. Default: 0
+        Component 0 is used to evaluate the total oceanic reflectance. Component 1 evaluates
+        the whitecap reflectance. Component 2 evaluates the sun glint reflectance. Component 3
+        evaluates the underlight reflectance. 
+
+ * - wavelength
+   - |float|
+   - :math:`k \in [0.2, 4]`. 
+   - Specifies the wavelength at which to evaluate the oceanic reflectance.
+
+*  - wind_speed
+   - |float|
+   - :math:`k \in [0, 37.54]`. 
+   - Specifies the wind speed at which to evaluate the oceanic reflectance.
+
+*  - wind_direction
+   - |float|
+   - :math:`k \in [0, 2\pi]`.
+   - Specifies the wind direction at which to evaluate the oceanic reflectance.
+
+*  - chlorinity
+   - |float|
+   - Specifies the chlorinity of the water at which to evaluate the oceanic reflectance.
+
+*  - pigmentation
+   - |float|
+   - :math:`k \in [0.3, \infty]`.
+   - Specifies the pigmentation of the water at which to evaluate the oceanic reflectance.
+
+*  - shininess
+   - |float|
+   - :math:`k \in [0, \infty]`.
+   - Specifies the shininess which is used as the exponent for Blinn-Phong MIS.
+
+This plugin implements the oceanic reflection model originally 
+implemented in the 6S radiative transfer model. 
+
+For the fundamental formulae defining the oceanic reflectance model, please refer to the
+Eradiate Scientific Handbook.
+
+Note that this material is one-sided---that is, observed from the
+back side, it will be completely black. If this is undesirable,
+consider using the ``twosided`` BSDF adapter plugin.
+The following snippet describes an oceanic surface material with monochromatic parameters:
+
+.. tab-set-code::
+
+    .. code-block:: python
+
+        "type": "oceanic-legacy",
+        "channel": 0,
+        "wavelength": 0.55,
+        "wind_speed": 10,
+        "wind_direction": 0,
+        "chlorinity": 19,
+        "pigmentation": 0.3,
+        "shininess": 50
+
+    .. code-block:: xml
+
+        <bsdf type="ocenaic-legacy">
+            <int name="component" value="0"/>
+            <float name="wavelength" value="0.55"/>
+            <float name="wind_speed" value="10"/>
+            <float name="wind_direction" value="0"/>
+            <float name="chlorinity" value="19"/>
+            <float name="pigmentation" value="0.3"/>
+            <float name="shininess" value="50"/>
+        </bsdf>
+*/
 template <typename Float, typename Spectrum>
 class OceanicBSDF final : public BSDF<Float, Spectrum> {
 public:
     MI_IMPORT_BASE(BSDF, m_flags, m_components)
     MI_IMPORT_TYPES(Texture)
 
+    /**
+     * @brief Construct a new OceanicBSDF object.
+     * 
+     * @param props A set of properties to initialize the oceanic BSDF.
+     */
     OceanicBSDF(const Properties &props) : Base(props) {
-        // Retrieve the parameters used in 6SV
-        m_channel = props.get<ScalarInt32>("channel");
-        m_type = props.get<ScalarInt32>("visual_type");
+        // Retrieve parameters
+        m_component = props.get<ScalarInt32>("component");
         m_wavelength = props.get<ScalarFloat>("wavelength");
         m_wind_speed = props.get<ScalarFloat>("wind_speed");
         m_wind_direction = props.get<ScalarFloat>("wind_direction");
@@ -789,18 +985,57 @@ public:
         dr::set_attr(this, "flags", m_flags);
     }
 
+    /**
+     * @brief Evaluate the whitecap reflectance.
+     * 
+     * Evaluates the whitecap reflectance at the provided wavelength and wind speed.
+     * 
+     * @return Float The whitecap reflectance.
+     */
     Float eval_whitecaps() const {
         return m_ocean_utils->eval_whitecaps(m_wavelength, m_wind_speed);
     }
-
+    
+    /**
+     * @brief Evaluate the sun glint reflectance.
+     * 
+     * Evaluates the sun glint reflectance at the provided wavelength, incident and outgoing
+     * directions, wind direction, wind speed, and chlorinity.
+     * 
+     * @param wi The incident direction of the light.
+     * @param wo The outgoing direction of the light.
+     * @return Float The sun glint reflectance.
+     */
     Float eval_glint(const Vector3f &wi, const Vector3f &wo) const {
         return m_ocean_utils->eval_glint(m_wavelength, wi, wo, m_wind_direction, m_wind_speed, m_chlorinity);
     }
 
+    /**
+     * @brief Evaluate the underwater light reflectance.
+     * 
+     * Evaluates the underwater light reflectance at the provided wavelength, incident and outgoing
+     * directions, wind direction, wind speed, chlorinity, and pigmentation.
+     * 
+     * @param wi The incident direction of the light.
+     * @param wo The outgoing direction of the light.
+     * @return Float The underwater light reflectance.
+     */
     Float eval_underlight(const Vector3f &wi, const Vector3f &wo) const {
         return m_ocean_utils->eval_underlight(m_wavelength, wi, wo, m_wind_direction, m_wind_speed, m_chlorinity, m_pigmentation);
     }
 
+    /**
+     * @brief Evaluate the oceanic reflectance.
+     * 
+     * Evaluates the oceanic reflectance at the provided wavelength, incident and outgoing
+     * directions, wind direction, wind speed, chlorinity, and pigmentation. The reflectance is
+     * computed by combining the whitecap, sun glint, and underwater light reflectance, according
+     * to the coverage of whitecaps (based on 6S).
+     * 
+     * @param wi The incident direction of the light.
+     * @param wo The outgoing direction of the light.
+     * @return Float The oceanic reflectance
+     */
     Float eval_ocean(const Vector3f &wi, const Vector3f &wo) const {
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
         Float whitecap_reflectance = eval_whitecaps();
@@ -812,6 +1047,18 @@ public:
             + (1 - (coverage * whitecap_reflectance)) * underlight_reflectance;
     }
 
+    /**
+     * @brief Evaluate the Blinn-Phong BRDF.
+     * 
+     * Evaluates the Blinn-Phong BRDF at the provided incident and outgoing directions, and
+     * surface normal. The BRDF is computed using the Blinn-Phong distribution.
+     * 
+     * @param wi The incident direction of the light.
+     * @param wo The outgoing direction of the light.
+     * @param normal The surface normal.
+     * @return Float The Blinn-Phong BRDF.
+     * @note This function is not used, but serves as a reference for future implementations.
+     */
     Float eval_blinn_phong(const Vector3f &wi, const Vector3f &wo, const Normal3f &normal) const {
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
         Float factor = (m_shininess + 2.0f) / (2.0f * dr::Pi<Float>);
@@ -923,21 +1170,17 @@ public:
         Float coverage = m_ocean_utils->eval_whitecap_coverage(m_wind_speed);
 
         // For debugging purposes, the channel indicates what term of the BRDF to evaluate
-        switch (m_channel)
+        switch (m_component)
         {
-            case 0:
+            case 1:
                 result[is_reflect] = (whitecap_reflectance) & active;
                 break;
-            case 1:
+            case 2:
                 result[is_reflect] = glint_reflectance & active;
                 break;
-            case 2:
+            case 3:
                 result[is_reflect] = underlight_reflectance & active;
                 break;     
-            case 4:
-                result[is_reflect] = glint_reflectance & active;
-                result[is_reflect] *= cos_theta_o;
-                break;
             default:
                 result[is_reflect] = whitecap_reflectance
                     + (1 - coverage) * glint_reflectance
@@ -945,40 +1188,6 @@ public:
                 
                 // Cosine foreshortening factor
                 result[is_reflect] *= cos_theta_o;
-                break;
-        }
-
-        // Compute the Blinn-Phong term
-        blinn[is_reflect] = eval_blinn_phong(si.wi, wo, si.n);
-
-        // Compute normalized values over the vector
-        auto normalized_r = result / dr::max(dr::max(result));
-        auto normalized_b = blinn / dr::max(dr::max(blinn));
-
-        // For debugging and visualization purposes, we support multiple visualisation types
-        switch (m_type) 
-        {
-            // Visualize the ocean reflectance
-            case 0:
-                break;
-
-            // Visualize the Blinn-Phong term
-            case 1:
-                result = blinn * cos_theta_o;
-                break;
-
-            // Visualize the normalized ocean reflectance
-            case 2:
-                result = normalized_r;
-                break;
-
-            // Visualize the difference between the normalized ocean and 
-            // Blinn-Phong reflectance
-            case 3:
-                result = normalized_r - normalized_b;
-                break;
-        
-            default:
                 break;
         }
 
@@ -1025,6 +1234,7 @@ public:
     std::string to_string() const override {
         std::ostringstream oss;
         oss << "OceanicLegacy[" << std::endl
+            << "  component = " << string::indent(m_component) << std::endl
             << "  wavelength = " << string::indent(m_wavelength) << std::endl
             << "  wind_speed = " << string::indent(m_wind_speed) << std::endl
             << "  wind_direction = " << string::indent(m_wind_direction) << std::endl
@@ -1037,9 +1247,8 @@ public:
 
     MI_DECLARE_CLASS()
 private:
-    // User-provided fields
-    ScalarInt32 m_channel;
-    ScalarInt32 m_type;
+    //  User-provided fields
+    ScalarInt32 m_component;
     ScalarFloat m_wavelength;
     ScalarFloat m_wind_speed;
     ScalarFloat m_wind_direction;
@@ -1047,7 +1256,7 @@ private:
     ScalarFloat m_pigmentation;
     ScalarFloat m_shininess;
 
-    // Fields used to compute whitecap reflectance
+    //  Pointer to the ocean utilities
     OceanUtilities<Float, Spectrum> *m_ocean_utils;
 };
 
