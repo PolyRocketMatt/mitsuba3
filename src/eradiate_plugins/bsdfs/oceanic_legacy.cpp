@@ -27,6 +27,16 @@ public:
     using FloatX = DynamicBuffer<Float>;
     using Value = dr::Array<ScalarFloat, 1>;
 
+    /**
+     * @brief Construct a new Ocean Properties object and initializes the data.
+     * 
+     * Initializes the data for the effective reflectance of whitecaps, the
+     * complex index of refraction of water, the water scattering and attenuation
+     * coefficients, and the molecular scattering coefficients. The data is taken
+     * from various sources in the literature. The quadrature points and weights
+     * for azimuth and zenith are also computed and transformed to the appropriate
+     * domains.
+     */
     OceanProperties() {
         // Effective reflectance of whitecaps (Whitlock et al. 1982)
         std::vector<ScalarFloat> wc_wavelengths = {     0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1,
@@ -167,38 +177,130 @@ public:
         m_zenith_weights = zenith_quad_weights;
     }
 
+    /**
+     * @brief Evaluate the effective reflectance of whitecaps.
+     * 
+     * Evaluates the effective reflectance of whitecaps at the given 
+     * wavelength. The value returned already takes into account 
+     * the base offset of 0.4 as described by (Koepke 1984).
+     * 
+     * @param wavelength The wavelength at which to evaluate the reflectance.
+     * @return ScalarFloat The effective reflectance of whitecaps.
+     */
     ScalarFloat effective_reflectance(const ScalarFloat &wavelength) const {
         return m_effective_reflectance.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the real index of refraction of water.
+     * 
+     * Evaluates the real index of refraction of water at the given
+     * wavelength. The value returned is the real part of the complex
+     * index of refraction as described by (Hale & Querry 1973).
+     * 
+     * @param wavelength The wavelength at which to evaluate the index of refraction.
+     * @return ScalarFloat The real part of the index of refraction.
+     */
     ScalarFloat ior_real(const ScalarFloat &wavelength) const {
         return m_ior_real.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the complex index of refraction of water.
+     * 
+     * Evaluates the complex index of refraction of water at the given
+     * wavelength. The value returned is the imaginary part of the complex
+     * index of refraction as described by (Hale & Querry 1973).
+     * 
+     * @param wavelength The wavelength at which to evaluate the index of refraction.
+     * @return ScalarFloat The imaginary part of the index of refraction.
+     */
     ScalarFloat ior_cplx(const ScalarFloat &wavelength) const {
         return m_ior_imag.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the K-term of the attenuation coefficient of water.
+     * 
+     * Evaluates the K-term of the attenuation coefficient of water at the given
+     * wavelength. The value returned is the K-term as described by (Morel 1988).
+     * 
+     * @param wavelength The wavelength at which to evaluate the K-term of the attenuation coefficient.
+     * @return ScalarFloat The K-term of the attenuation coefficient.
+     */
     ScalarFloat attn_k(const ScalarFloat &wavelength) const {
         return m_attn_k.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the Chi-term of the attenuation coefficient of water.
+     * 
+     * Evaluates the Chi-term of the attenuation coefficient of water at the given
+     * wavelength. The value returned is the Chi-term as described by (Morel 1988).
+     * 
+     * @param wavelength The wavelength at which to evaluate the Chi-term of the attenuation coefficient.
+     * @return ScalarFloat The Chi-term of the attenuation coefficient.
+     */
     ScalarFloat attn_chi(const ScalarFloat &wavelength) const {
         return m_attn_chi.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the E-term of the attenuation coefficient of water.
+     * 
+     * Evaluates the E-term of the attenuation coefficient of water at the given
+     * wavelength. The value returned is the E-term as described by (Morel 1988).
+     * 
+     * @param wavelength The wavelength at which to evaluate the E-term of the attenuation coefficient.
+     * @return ScalarFloat The E-term of the attenuation coefficient.
+     */
     ScalarFloat attn_e(const ScalarFloat &wavelength) const {
         return m_attn_e.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the molecular scattering coefficient of water.
+     * 
+     * Evaluates the molecular scattering coefficient of water at the given
+     * wavelength. The value returned is the molecular scattering coefficient
+     * as described by (Morel 1988).
+     * 
+     * @param wavelength The wavelength at which to evaluate the molecular scattering coefficient.
+     * @return ScalarFloat The molecular scattering coefficient.
+     */
     ScalarFloat molecular_scatter_coeff(const ScalarFloat &wavelength) const {
         return m_molecular_scatter_coeffs.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the molecular scattering coefficient of water.
+     * 
+     * Evaluates the molecular scattering coefficient of water at the given
+     * wavelength. The value returned is the molecular scattering coefficient
+     * as described by (6S).
+     * 
+     * @param wavelength The wavelength at which to evaluate the molecular scattering coefficient.
+     * @return ScalarFloat The molecular scattering coefficient.
+     */
     ScalarFloat molecular_scatter_coeff_6s(const ScalarFloat &wavelength) const {
         return m_molecular_scatter_coeffs_6s.eval_pdf(wavelength);
     }
 
+    /**
+     * @brief Evaluate the azimuthal quadrature point and weight.
+     * 
+     * Evaluates the azimuthal quadrature point and weight at the given index.
+     * The quadrature point has already been transformed to the range [0, 2π]. 
+     * The quadrature weight has already been multiplied by the Jacobian of the
+     * transformation.
+     * 
+     * @param i The index of the quadrature point.
+     * @return std::tuple<Float, Float> The azimuthal quadrature point and weight.
+     * @throw std::runtime_error If the index is out of bounds.
+     * @note The azimuthal quadrature points are in the range [0, 2π].
+     * @note The azimuthal quadrature weights are in the range [0, π].
+     * @see AZIMUTH_QUADRATURE_PTS
+     */
     std::tuple<Float, Float> eval_azimuth(ScalarUInt32 i) const {
         if (i > AZIMUTH_QUADRATURE_PTS)
             Throw("Invalid azimuth index");
@@ -208,6 +310,21 @@ public:
         return { point, weight };
     }
 
+    /**
+     * @brief Evaluate the zenithal quadrature point and weight.
+     * 
+     * Evaluates the zenithal quadrature point and weight at the given index.
+     * The quadrature point has already been transformed to the range [0, π/2].
+     * The quadrature weight has already been multiplied by the Jacobian of the
+     * transformation.
+     * 
+     * @param i The index of the quadrature point.
+     * @return std::tuple<Float, Float> The zenithal quadrature point and weight.
+     * @throw std::runtime_error If the index is out of bounds.
+     * @note The zenithal quadrature points are in the range [0, π/2].
+     * @note The zenithal quadrature weights are in the range [0, π/4].
+     * @see ZENITH_QUADRATURE_PTS
+     */
     std::tuple<Float, Float> eval_zenith(ScalarUInt32 i) const {
         if (i > ZENITH_QUADRATURE_PTS)
             Throw("Invalid zenith index");
@@ -793,7 +910,7 @@ public:
 
             // Visualize the Blinn-Phong term
             case 1:
-                result = blinn;
+                result = blinn * cos_theta_o;
                 break;
 
             // Visualize the normalized ocean reflectance
