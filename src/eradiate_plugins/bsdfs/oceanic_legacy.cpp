@@ -363,17 +363,43 @@ public:
 
     using Value = dr::Array<ScalarFloat, 1>;
 
+    /**
+     * @brief Construct a new Ocean Utilities object.
+     * 
+     * Construct a new Ocean Utilities object and initializes the ocean properties.
+     */
     OceanUtilities() : m_ocean_props() { }
 
+    /**
+     * @brief Evaluate the fractional coverage of whitecaps.
+     * 
+     * Evaluates the fractional coverage of whitecaps at the given wind speed,
+     * using the Monahan et al. (1986) model. The coverage is clamped to the
+     * range [0, 1] (i.e. wind speed can be within the range [0, 37.54]).
+     * 
+     * @param wind_speed The wind speed at which to evaluate the coverage.
+     * @return ScalarFloat The fractional coverage of whitecaps.
+     */
     ScalarFloat eval_whitecap_coverage(const ScalarFloat &wind_speed) {
         return dr::clamp(m_monahan_alpha * dr::pow(wind_speed, m_monahan_lambda), 0.0f, 1.0f);
     }
 
+    /**
+     * @brief Evaluate the reflectance of whitecaps.
+     * 
+     * Evaluates the reflectance of whitecaps at the given wavelength and wind speed.
+     * The reflectance is computed as the product of the effective reflectance of whitecaps
+     * and the fractional coverage of whitecaps.
+     * 
+     * @param wavelength The wavelength at which to evaluate the reflectance.
+     * @param wind_speed The wind speed at which to evaluate the reflectance.
+     * @return ScalarFloat The reflectance of whitecaps.
+     */
     ScalarFloat eval_whitecaps(const ScalarFloat &wavelength, const ScalarFloat &wind_speed) {
         // Compute the fractional coverage of whitecaps
         ScalarFloat coverage = eval_whitecap_coverage(wind_speed);
 
-        // Old
+        // Proper interpolation of the effective reflectance
         ScalarFloat eff_reflectance = m_ocean_props.effective_reflectance(wavelength);
 
         // Compute the whitecap reflectance
@@ -382,6 +408,22 @@ public:
         return whitecap_reflectance;
     }
 
+    /**
+     * @brief Evaluate the sun glint reflectance.
+     * 
+     * Evaluates the sun glint reflectance at the given wavelength, incident and outgoing
+     * directions, wind direction, wind speed, and chlorinity. The reflectance is computed
+     * using the Cox-Munk distribution, the Fresnel equations, and relative tilt of the
+     * oceanic surface.
+     * 
+     * @param wavelength The wavelength at which to evaluate the reflectance.
+     * @param wi The incident direction of the light.
+     * @param wo The outgoing direction of the light.
+     * @param wind_direction The direction of the wind relative to the incident light.
+     * @param wind_speed The wind speed at which to evaluate the reflectance.
+     * @param chlorinity The chlorinity of the water.
+     * @return ScalarFloat The sun glint reflectance.
+     */
     Float eval_glint(const ScalarFloat &wavelength, 
                      const Vector3f &wi, const Vector3f &wo, 
                      const ScalarFloat &wind_direction, const ScalarFloat &wind_speed,
@@ -398,6 +440,23 @@ public:
         return eval_sun_glint<Float>(wavelength, theta_i, theta_o, phi, phi_w, wind_speed, chlorinity);
     }
 
+    /**
+     * @brief Evaluate the underwater light reflectance.
+     * 
+     * Evaluates the underwater light reflectance at the given wavelength, incident and outgoing
+     * directions, wind direction, wind speed, chlorinity, and pigmentation. The reflectance is
+     * computed by performing two quadratures to compute both upwelling and downwelling 
+     * transmittance, attenuted with the ratio of upwell to downwelling irradiance.
+     * 
+     * @param wavelength The wavelength at which to evaluate the reflectance.
+     * @param wi The incident direction of the light.
+     * @param wo The outgoing direction of the light.
+     * @param wind_direction The direction of the wind relative to the incident light.
+     * @param wind_speed The wind speed at which to evaluate the reflectance.
+     * @param chlorinity The chlorinity of the water.
+     * @param pigmentation The pigmentation of the water.
+     * @return ScalarFloat The underwater light reflectance.
+     */
     Float eval_underlight(const ScalarFloat &wavelength, 
                           const Vector3f &wi, const Vector3f &wo,
                           const ScalarFloat &wind_direction, const ScalarFloat &wind_speed,
@@ -415,23 +474,18 @@ private:
     // Ocean properties
     OceanProperties<Float, Spectrum> m_ocean_props;
 
-    // Simple constants
-    ScalarFloat m_pi = dr::Pi<ScalarFloat>;
-    ScalarFloat m_pi_half = m_pi / 2.0f;
-    ScalarFloat m_pi_three_half = (3.0f * m_pi) / 2.0f;
+    // Whitecap constants
+    const ScalarFloat m_f_eff_base = 0.4f;
+    const ScalarFloat m_monahan_alpha = 2.95e-06f;
+    const ScalarFloat m_monahan_lambda = 3.52f;
 
-    // Whitecap parameters
-    ScalarFloat m_f_eff_base = 0.4f;
-    ScalarFloat m_monahan_alpha = 2.95e-06f;
-    ScalarFloat m_monahan_lambda = 3.52f;
-
-    // Cox-Munk distribution parameters
-    ScalarFloat m_c_40 = 0.40f;
-    ScalarFloat m_c_22 = 0.12f;
-    ScalarFloat m_c_04 = 0.23f;
+    // Cox-Munk distribution constants
+    const ScalarFloat m_c_40 = 0.40f;
+    const ScalarFloat m_c_22 = 0.12f;
+    const ScalarFloat m_c_04 = 0.23f;
 
     // Underlight parameters
-    ScalarFloat m_underlight_alpha = 0.485f;
+    const ScalarFloat m_underlight_alpha = 0.485f;
 
     template <typename Value>
     Value eval_cox_munk(const Value &phi_w, 
@@ -537,7 +591,7 @@ private:
         Value fresnel_coeff = eval_fresnel<Value>(n_real, n_imag, coschi, sinchi);
         
         // Sun glint reflectance
-        Value num = m_pi * fresnel_coeff * specular_prob;
+        Value num = dr::Pi<Value> * fresnel_coeff * specular_prob;
         Value denom = 4.0f * c_i * c_o * dr::pow(dr::cos(tilt), 4.0f);
 
         return num / denom;
