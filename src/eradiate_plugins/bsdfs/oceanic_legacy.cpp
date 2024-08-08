@@ -359,8 +359,6 @@ class OceanUtilities {
 public:
     MI_IMPORT_TYPES()
 
-    using Value = dr::Array<ScalarFloat, 1>;
-
     /**
      * @brief Construct a new Ocean Utilities object.
      * 
@@ -434,8 +432,7 @@ public:
         Float phi = phi_i - phi_o;
         Float phi_w = phi_i - wind_direction;
         
-
-        return eval_sun_glint<Float>(wavelength, theta_i, theta_o, phi, phi_w, wind_speed, chlorinity);
+        return eval_sun_glint(wavelength, theta_i, theta_o, phi, phi_w, wind_speed, chlorinity);
     }
 
     /**
@@ -496,30 +493,29 @@ private:
      * @param z_x The x component of the sensor/emitter direction.
      * @param z_y The y component of the sensor/emitter direction.
      * @param wind_speed The wind speed at which to evaluate the distribution.
-     * @return Value The probability of the Cox-Munk distribution.
+     * @return Float The probability of the Cox-Munk distribution.
      */
-    template <typename Value>
-    Value eval_cox_munk(const Value &phi_w, 
-                        const Value &z_x, const Value &z_y,
+    Float eval_cox_munk(const Float &phi_w, 
+                        const Float &z_x, const Float &z_y,
                         const ScalarFloat &wind_speed) const {
-        ScalarFloat sigma_c = 0.003f + 0.00192f * wind_speed;
-        ScalarFloat sigma_u = 0.00316f * wind_speed;
+        Float sigma_c = 0.003f + 0.00192f * wind_speed;
+        Float sigma_u = 0.00316f * wind_speed;
 
-        ScalarFloat c_21 = 0.01f - 0.0086f * wind_speed;
-        ScalarFloat c_03 = 0.04f - 0.033f * wind_speed;
+        Float c_21 = 0.01f - 0.0086f * wind_speed;
+        Float c_03 = 0.04f - 0.033f * wind_speed;
 
-        Value xe = (dr::cos(phi_w) * z_x + dr::sin(phi_w) * z_y) / dr::sqrt(sigma_c);
-        Value xn = (-dr::sin(phi_w) * z_x + dr::cos(phi_w) * z_y) / dr::sqrt(sigma_u);
+        Float xe = (dr::cos(phi_w) * z_x + dr::sin(phi_w) * z_y) / dr::sqrt(sigma_c);
+        Float xn = (-dr::sin(phi_w) * z_x + dr::cos(phi_w) * z_y) / dr::sqrt(sigma_u);
 
-        Value xe2 = xe * xe;
-        Value xn2 = xn * xn;
+        Float xe2 = xe * xe;
+        Float xn2 = xn * xn;
         
-        Value coef = 1.0f - (c_21 / 2.0f) * (xe2 - 1.0f) * xn - (c_03 / 6.0f) * (xn2 - 3.0f) * xn;
+        Float coef = 1.0f - (c_21 / 2.0f) * (xe2 - 1.0f) * xn - (c_03 / 6.0f) * (xn2 - 3.0f) * xn;
         coef = coef + (m_c_40 / 24.0f) * (xe2 * xe2 - 6.0f * xe2 + 3.0f);
         coef = coef + (m_c_04 / 24.0f) * (xn2 * xn2 - 6.0f * xn2 + 3.0f);
         coef = coef + (m_c_22 / 4.0f) * (xe2 - 1.0f) * (xn2 - 1.0f);
         
-        Value prob = coef / 2.0f / dr::Pi<Value> / dr::sqrt(sigma_u) / dr::sqrt(sigma_c) * dr::exp(-(xe2 + xn2) / 2.0f);
+        Float prob = coef / 2.0f / dr::Pi<Float> / dr::sqrt(sigma_u) / dr::sqrt(sigma_c) * dr::exp(-(xe2 + xn2) / 2.0f);
         return prob;
     }
 
@@ -534,25 +530,24 @@ private:
      * @param n_imag The imaginary part of the index of refraction.
      * @param coschi The cosine of the geometry term.
      * @param sinchi The sine of the geometry term.
-     * @return Value The Fresnel coefficient.
+     * @return Float The Fresnel coefficient.
      */
-    template <typename Value>
-    Value eval_fresnel(const ScalarFloat &n_real, const ScalarFloat &n_imag,
+    Float eval_fresnel(const ScalarFloat &n_real, const ScalarFloat &n_imag,
                        const Float &coschi, const Float &sinchi) const {
-        Value s = (n_real * n_real) - (n_imag * n_imag) - (sinchi * sinchi);
+        Float s = (n_real * n_real) - (n_imag * n_imag) - (sinchi * sinchi);
         
-        Value a_1 = dr::abs(s);
-        Value a_2 = dr::sqrt(dr::sqr(s) + 4.0f * n_real * n_real * n_imag * n_imag);
+        Float a_1 = dr::abs(s);
+        Float a_2 = dr::sqrt(dr::sqr(s) + 4.0f * n_real * n_real * n_imag * n_imag);
 
-        Value u = dr::sqrt(0.5f * dr::abs(a_1 + a_2));
-        Value v = dr::sqrt(0.5f * dr::abs(a_2 - a_1));
+        Float u = dr::sqrt(0.5f * dr::abs(a_1 + a_2));
+        Float v = dr::sqrt(0.5f * dr::abs(a_2 - a_1));
 
-        Value b_1 = (n_real * n_real - n_imag * n_imag) * coschi;
-        Value b_2 = 2 * n_real * n_imag * coschi;
+        Float b_1 = (n_real * n_real - n_imag * n_imag) * coschi;
+        Float b_2 = 2 * n_real * n_imag * coschi;
 
-        Value right_squared = (dr::sqr(coschi - u) + v * v) / (dr::sqr(coschi + u) + v * v);
-        Value left_squared = (dr::sqr(b_1 - u) + dr::sqr(b_2 + v)) / (dr::sqr(b_1 + u) + dr::sqr(b_2 - v));
-        Value R = (right_squared + left_squared) * 0.5f;
+        Float right_squared = (dr::sqr(coschi - u) + v * v) / (dr::sqr(coschi + u) + v * v);
+        Float left_squared = (dr::sqr(b_1 - u) + dr::sqr(b_2 + v)) / (dr::sqr(b_1 + u) + dr::sqr(b_2 - v));
+        Float R = (right_squared + left_squared) * 0.5f;
 
         return R;
     }
@@ -574,42 +569,41 @@ private:
      * @param wind_speed The wind speed at which to evaluate the reflectance.
      * @param chlorinity The chlorinity of the water.
      * @param invert_real Whether to invert the real part of the IOR.
-     * @return Value The sun glint reflectance.
+     * @return Float The sun glint reflectance.
      */
-    template <typename Value>
-    Value eval_sun_glint(const ScalarFloat &wavelength, 
-                         const Value &theta_i, const Value &theta_o,
-                         const Value &phi,
-                         const Value &phi_w, const ScalarFloat &wind_speed,
+    Float eval_sun_glint(const ScalarFloat &wavelength, 
+                         const Float &theta_i, const Float &theta_o,
+                         const Float &phi,
+                         const Float &phi_w, const ScalarFloat &wind_speed,
                          const ScalarFloat &chlorinity,
                          const bool invert_real = false) {
         // Implementation analog to 6SV
-        Value c_i = dr::cos(theta_i);
-        Value c_o = dr::cos(theta_o);
-        Value s_i = dr::sin(theta_i);
-        Value s_o = dr::sin(theta_o);
+        Float c_i = dr::cos(theta_i);
+        Float c_o = dr::cos(theta_o);
+        Float s_i = dr::sin(theta_i);
+        Float s_o = dr::sin(theta_o);
 
-        Value z_x = (-s_o * dr::sin(phi)) / (c_i + c_o);
-        Value z_y = (s_i + s_o * dr::cos(phi)) / (c_i + c_o);
+        Float z_x = (-s_o * dr::sin(phi)) / (c_i + c_o);
+        Float z_y = (s_i + s_o * dr::cos(phi)) / (c_i + c_o);
 
         // Tilt angle (rad)
-        Value tan_tilt = dr::sqrt(z_x * z_x + z_y * z_y);
-        Value tilt = dr::atan(tan_tilt);
+        Float tan_tilt = dr::sqrt(z_x * z_x + z_y * z_y);
+        Float tilt = dr::atan(tan_tilt);
 
         // Cox-Munk specular probability
-        Value specular_prob = eval_cox_munk<Value>(phi_w, z_x, z_y, wind_speed);
+        Float specular_prob = eval_cox_munk(phi_w, z_x, z_y, wind_speed);
         auto mask = Mask(specular_prob < 0.0f);
         specular_prob = dr::select(mask, 0.0f, specular_prob);
 
-        Value cos_2_chi = c_o * c_i + s_o * s_i * dr::cos(phi);
+        Float cos_2_chi = c_o * c_i + s_o * s_i * dr::cos(phi);
         auto ge_1 = Mask(cos_2_chi > 1.0f);
         auto le_1 = Mask(cos_2_chi < -1.0f);
         
         cos_2_chi = dr::select(ge_1, 0.999999999f, cos_2_chi);
         cos_2_chi = dr::select(le_1, -0.999999999f, cos_2_chi);
         
-        Value coschi = dr::sqrt(0.5f * (1.0f + cos_2_chi));
-        Value sinchi = dr::sqrt(0.5f * (1.0f - cos_2_chi));
+        Float coschi = dr::sqrt(0.5f * (1.0f + cos_2_chi));
+        Float sinchi = dr::sqrt(0.5f * (1.0f - cos_2_chi));
 
         auto ge_coschi = Mask(coschi > 1.0f);
         auto le_coschi = Mask(coschi < -1.0f);
@@ -631,11 +625,11 @@ private:
             n_imag = 0.0f;
         }
 
-        Value fresnel_coeff = eval_fresnel<Value>(n_real, n_imag, coschi, sinchi);
+        Float fresnel_coeff = eval_fresnel(n_real, n_imag, coschi, sinchi);
         
         // Sun glint reflectance
-        Value num = dr::Pi<Value> * fresnel_coeff * specular_prob;
-        Value denom = 4.0f * c_i * c_o * dr::pow(dr::cos(tilt), 4.0f);
+        Float num = dr::Pi<Float> * fresnel_coeff * specular_prob;
+        Float denom = 4.0f * c_i * c_o * dr::pow(dr::cos(tilt), 4.0f);
 
         return num / denom;
     }
@@ -740,7 +734,7 @@ private:
                 auto [zenith_point, zenith_weight] = m_ocean_props.eval_zenith(zenith_idx);
 
                 Float geometry = dr::cos(zenith_point) * dr::sin(zenith_point);
-                Float glint = eval_sun_glint<Float>(wavelength, t_w, zenith_point, azimuth_point, phi_w, wind_speed, chlorinity, true);
+                Float glint = eval_sun_glint(wavelength, t_w, zenith_point, azimuth_point, phi_w, wind_speed, chlorinity, true);
                 Float geometryAndWeight = geometry * azimuth_weight * zenith_weight;
 
                 //  Accumulate the result
@@ -790,7 +784,7 @@ private:
             auto [zenith_point, zenith_weight] = m_ocean_props.eval_zenith(zenith_idx);
 
             Float geometry = dr::cos(zenith_point) * dr::sin(zenith_point);
-            Float glint = eval_sun_glint<Float>(wavelength, theta_i, zenith_point, azimuth_point, phi_w, wind_speed, chlorinity);
+            Float glint = eval_sun_glint(wavelength, theta_i, zenith_point, azimuth_point, phi_w, wind_speed, chlorinity);
             Float geometryWeight = geometry * azimuth_weight * zenith_weight;
 
             //  Accumulate the result
@@ -983,6 +977,16 @@ public:
         for (auto c : m_components)
             m_flags |= c;
         dr::set_attr(this, "flags", m_flags);
+    }
+
+    void traverse(TraversalCallback *callback) override {
+        callback->put_object("component", m_component.get());
+        callback->put_object("wavelength", m_wavelength.get());
+        callback->put_object("wind_speed", m_wind_speed.get());
+        callback->put_object("wind_direction", m_wind_direction.get());
+        callback->put_object("chlorinity", m_chlorinity.get());
+        callback->put_object("pigmentation", m_pigmentation.get());
+        callback->put_object("shininess", m_shininess.get());
     }
 
     /**
