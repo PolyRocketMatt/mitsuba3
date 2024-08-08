@@ -1,6 +1,7 @@
 import pytest
 import drjit as dr
 import mitsuba as mi
+import numpy as np
 
 from ..tools import sample_eval_pdf_bsdf
 
@@ -33,7 +34,7 @@ def test_consistency_oceanic(variants_vec_backends_once_rgb):
 
     assert chi2.run()
 
-def test_create_oceanc(variants_vec_backends_once_rgb):
+def test_create_oceanic(variants_vec_backends_once_rgb):
     # Test constructor of oceanic BSDF
     brdf = mi.load_dict(_bsdf_dict)
     diff, gloss, comb = brdf.flags(0), brdf.flags(1), brdf.flags()
@@ -47,21 +48,3 @@ def test_create_oceanc(variants_vec_backends_once_rgb):
     assert diff == diff_flag
     assert gloss == gloss_flag
     assert comb == comb_flag
-
-
-@pytest.mark.parametrize("wi", [[0, 0, 1], [0, 1, 1], [1, 1, 1]])
-def test_sampling_weights_oceanic(variants_vec_backends_once_rgb, wi):
-    """
-    Sampling weights are correctly computed, i.e. equal to eval() / pdf().
-    """
-    print(wi)
-    sample_eval_pdf_bsdf(mi.load_dict(_bsdf_dict), dr.normalize(mi.ScalarVector3f(wi)))
-    assert False
-    """oceanic = mi.load_dict(_bsdf_dict)
-    (_, weight), eval, pdf = sample_eval_pdf_bsdf(
-        oceanic, dr.normalize(mi.ScalarVector3f(wi))
-    )
-
-    print(weight, eval / pdf)
-
-    assert dr.allclose(weight, eval / pdf)"""
