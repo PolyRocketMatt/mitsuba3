@@ -668,7 +668,7 @@ private:
         // Upwelling and downwelling transmittance
         Float t_u = upwelling_transmittance(wavelength, n_real, theta_o, phi_w, wind_speed, chlorinity);
         Float t_d = downwelling_transmittance(wavelength, theta_i, phi_w, wind_speed, chlorinity);
-        
+
         // Compute the underlight term
         Float underlight = (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
         
@@ -1168,10 +1168,10 @@ public:
                 result[is_reflect] = (whitecap_reflectance) & active;
                 break;
             case 2:
-                result[is_reflect] = glint_reflectance & active;
+                result[is_reflect] = (1 - coverage) * glint_reflectance & active;
                 break;
             case 3:
-                result[is_reflect] = underlight_reflectance & active;
+                result[is_reflect] = (1 - (coverage * whitecap_reflectance)) * underlight_reflectance & active;
                 break;     
             default:
                 result[is_reflect] = whitecap_reflectance
