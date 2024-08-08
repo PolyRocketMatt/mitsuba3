@@ -668,9 +668,7 @@ private:
         // Upwelling and downwelling transmittance
         Float t_u = upwelling_transmittance(wavelength, n_real, theta_o, phi_w, wind_speed, chlorinity);
         Float t_d = downwelling_transmittance(wavelength, theta_i, phi_w, wind_speed, chlorinity);
-
-        Log(Warn, "Upwell: %f, Downwell: %f", t_u, t_d);
-
+        
         // Compute the underlight term
         Float underlight = (1.0f / (dr::sqr(n_real) + dr::sqr(n_imag))) * (r_om * t_u * t_d) / (1.0f - m_underlight_alpha * r_om);
         
@@ -971,22 +969,12 @@ public:
     
         // => Sun glint reflectance at the water surface is "specular"
         m_components.push_back(BSDFFlags::GlossyReflection | 
-                               BSDFFlags::FrontSide | BSDFFlags::BackSide);
+                               BSDFFlags::FrontSide);
 
         // Set all the flags
         for (auto c : m_components)
             m_flags |= c;
         dr::set_attr(this, "flags", m_flags);
-    }
-
-    void traverse(TraversalCallback *callback) override {
-        callback->put_object("component", m_component.get());
-        callback->put_object("wavelength", m_wavelength.get());
-        callback->put_object("wind_speed", m_wind_speed.get());
-        callback->put_object("wind_direction", m_wind_direction.get());
-        callback->put_object("chlorinity", m_chlorinity.get());
-        callback->put_object("pigmentation", m_pigmentation.get());
-        callback->put_object("shininess", m_shininess.get());
     }
 
     /**
